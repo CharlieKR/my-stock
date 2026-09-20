@@ -67,6 +67,30 @@ private func monthSeries(assets: (Int) -> Double, pnl: (Int) -> Double?) -> [Dai
   #expect(points.assetChange(at: points[1]) == 25)
   #expect(points.assetChange(at: points[2]) == -10)
 }
+@Test func cumulativeSnapshotAddsSettlementProfitAtSnapshotFX() {
+  let parts = [
+    report(.soxl, "2026-09-18", assets: 150, pnl: 50),
+    report(.hyxl, "2026-09-17", assets: 260_000, pnl: 60_000),
+  ]
+  let point = AssetPoint(date: "2026-09-18", assets: 470_000, constituents: parts, fx: 1_400)
+  #expect(point.cumulativeProfit == 130_000)
+  #expect(abs((point.cumulativeReturn ?? 0) - 130_000.0 / 340_000 * 100) < 0.000001)
+  #expect(point.hasCarriedValuation)
+}
+
+@Test func cumulativeSnapshotDoesNotTreatMissingProfitAsZero() {
+  let parts = [
+    report(.soxl, "2026-09-18", assets: 150, pnl: 50),
+    report(.hyxl, "2026-09-18", assets: 260_000, pnl: nil),
+  ]
+  let point = AssetPoint(date: "2026-09-18", assets: 470_000, constituents: parts, fx: 1_400)
+  #expect(point.cumulativeProfit == nil)
+  #expect(point.cumulativeReturn == nil)
+  let loss = AssetPoint(date: "2026-09-18", assets: 80,
+    constituents: [report(.hyxl, "2026-09-18", assets: 80, pnl: -20)], fx: 1)
+  #expect(loss.cumulativeReturn == -20)
+}
+
 @Test func dailyReturnUsesTheReportedPercentBeforeItsAssetFallback() {
   let explicit = report(.hyxl, "2026-09-18", assets: 173_660_462, pnl: 50_651_807,
     daily: 3_877_978, details: [ReportDetail(id: "today", title: "오늘", text: "+3,877,978원 (+2.28%)")])

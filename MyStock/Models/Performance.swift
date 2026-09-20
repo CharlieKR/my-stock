@@ -19,6 +19,23 @@ struct AssetPoint: Identifiable {
   var id: String { date }
   var day: Date { ReportDate.parse(date) }
   var hasCarriedValuation: Bool { constituents.contains { $0.date != date } }
+  /// Settlement P&L and principal use the same FX rate as this asset snapshot.
+  /// Period returns belong to the report screen, not this cumulative balance.
+  var cumulativeProfit: Double? {
+    guard !constituents.isEmpty else { return nil }
+    var total = 0.0
+    for report in constituents {
+      guard let profit = report.cumulativePnl, profit.isFinite else { return nil }
+      let rate = report.currency == "USD" ? fx : 1
+      guard rate.isFinite, rate > 0 else { return nil }
+      total += profit * rate
+    }
+    return total.isFinite ? total : nil
+  }
+  var cumulativeReturn: Double? {
+    guard let profit = cumulativeProfit, assets.isFinite, assets - profit > 0 else { return nil }
+    return profit / (assets - profit) * 100
+  }
 }
 
 extension Array where Element == AssetPoint {
