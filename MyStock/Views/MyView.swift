@@ -4,9 +4,23 @@ struct MyView: View {
   @Environment(ReportStore.self) private var store
   @AppStorage("appearance") private var appearance: AppAppearance = .system
   @AppStorage("hideAmounts") private var hidden = false
-  private var latest: AssetPoint? {
-    if let performance=store.envelope.performance?["all"] { return performance.assetPoints(in:store.envelope).last }
-    return store.isDemo ? Performance.points(store.envelope, scope:.all).last : nil
+  private var allPoints: [AssetPoint] {
+    if let performance=store.envelope.performance?["all"] {
+      return performance.assetPoints(in:store.envelope)
+    }
+    return store.isDemo ? Performance.points(store.envelope, scope:.all) : []
+  }
+  private var latest: AssetPoint? { allPoints.last }
+  private var performanceSummary: MonthlyPerformance? { summary(for:.all) }
+  private func summary(for scope: ReportScope) -> MonthlyPerformance? {
+    let key=scope == .all ? "all" : scope.rawValue
+    if let summary=store.envelope.performance?[key]?.summary { return summary.display }
+    let points=scope == .all ? allPoints : Performance.points(store.envelope,scope:scope)
+    guard store.isDemo,let first=points.first,let last=points.last else { return nil }
+    return MonthlyPerformance(month:"",startDate:first.date,endDate:last.date,
+      startAssets:first.assets,endAssets:last.assets,profit:last.assets-first.assets,
+      returnPercent:first.assets>0 ? (last.assets-first.assets)/first.assets*100 : nil,
+      cashflow:0,partial:false,estimated:false)
   }
   var body: some View {
     Canvas {
@@ -32,16 +46,51 @@ struct MyView: View {
           Text("\(ReportDate.label(latest.date, format: "M월 d일")) 기준 · 원화 환산").font(.caption)
             .foregroundStyle(.secondary)
           Divider()
+          if let summary=performanceSummary {
+            HStack(spacing: 16) {
+              Metric(
+                title: "수익금\(summary.estimated ? " (추정)" : "")",
+                value: Format.money(summary.profit, "KRW", signed: true, hidden: hidden),
+                color: .gain(summary.profit))
+                .accessibilityIdentifier("my.totalProfit")
+              Metric(
+                title: "수익률\(summary.estimated ? " (추정)" : "")",
+                value: hidden ? "•••" : Format.percent(summary.returnPercent),
+                color: .gain(summary.returnPercent))
+                .accessibilityIdentifier("my.totalReturn")
+            }
+            Text("수익 계산 · \(ReportDate.label(summary.startDate, format: "yyyy.MM.dd")) – \(ReportDate.label(summary.endDate, format: "yyyy.MM.dd"))")
+              .font(.caption2).foregroundStyle(.secondary)
+            if let reason=summary.reason { Notice(text:reason) }
+            Divider()
+          }
           ForEach(latest.constituents) { report in
-            HStack {
-              Circle().fill(report.investment.tint).frame(width: 7, height: 7)
-              Text(report.investment.rawValue).font(.subheadline.weight(.medium))
-              Spacer()
-              Text(
-                Format.money(
-                  (report.totalAssets ?? 0) * (report.currency == "USD" ? latest.fx : 1), "KRW",
-                  hidden: hidden)
-              ).font(.subheadline).monospacedDigit()
+            VStack(spacing: 7) {
+              HStack {
+                Circle().fill(report.investment.tint).frame(width: 7, height: 7)
+                Text(report.investment.rawValue).font(.subheadline.weight(.medium))
+                Spacer()
+                Text(
+                  Format.money(
+                    (report.totalAssets ?? 0) * (report.currency == "USD" ? latest.fx : 1), "KRW",
+                    hidden: hidden)
+                ).font(.subheadline).monospacedDigit()
+              }
+              if let investmentSummary=summary(for:report.investment == .soxl ? .soxl : .hyxl) {
+                let profit=investmentSummary.profit.map {
+                  $0 * (report.investment == .soxl ? latest.fx : 1)
+                }
+                HStack {
+                  Text("수익금\(investmentSummary.estimated ? " (추정)" : "") · \(ReportDate.label(investmentSummary.startDate,format:"M.d"))~")
+                    .foregroundStyle(.secondary)
+                  Spacer()
+                  Text("\(Format.money(profit,"KRW",signed:true,hidden:hidden)) · \(hidden ? "•••" : Format.percent(investmentSummary.returnPercent))")
+                    .foregroundStyle(Color.gain(profit))
+                    .monospacedDigit()
+                }
+                .font(.caption)
+                .accessibilityIdentifier("my.\(report.investment.rawValue).performance")
+              }
             }
           }
           Notice(text: "1 USD = \(Format.money(latest.fx, "KRW")) · 날짜별 기준환율")
