@@ -47,9 +47,6 @@ struct DailyReport: Codable, Identifiable, Sendable {
   var statusTitle: String {
     status == "closed" ? "휴장" : status == "settled" ? "정산 완료" : isOrderPlan ? "주문 예정" : "정산 대기"
   }
-  var hasLegacySettlementSource: Bool {
-    quality == "legacy_archive" || (quality == nil && !slackURL.isEmpty)
-  }
 }
 
 struct ReportDetail: Codable, Identifiable, Sendable {
@@ -101,10 +98,36 @@ struct ThreadMessage: Codable, Identifiable, Sendable {
     Self.clean(text.components(separatedBy: .newlines).dropFirst().joined(separator: "\n"))
       .trimmingCharacters(in: .whitespacesAndNewlines)
   }
+  var isOrderActivity: Bool {
+    title.contains("주문표") || title.contains("주문 계획") || title.contains("주문 실행")
+      || title.contains("주문실행") || title.contains("주문 제출") || title.contains("주문결과")
+      || title.contains("주문 결과") || title.contains("체결 결과")
+  }
+  var activityTitle: String {
+    if title.contains("결과") || title.contains("체결") { return "체결 결과" }
+    if title.contains("실행") || title.contains("제출") { return "주문 제출" }
+    return "주문표"
+  }
+  var activityStatus: String {
+    if activityTitle == "체결 결과" {
+      if body.contains("체결 없음") || body.contains("체결\n- 없음") { return "미체결" }
+      if body.contains("미체결") { return "일부 체결" }
+      return "체결 완료"
+    }
+    return activityTitle == "주문 제출" ? "제출 완료" : "생성 완료"
+  }
+  var timeLabel: String {
+    guard let instant = ISO8601DateFormatter().date(from: date) else { return "" }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "ko_KR")
+    formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+    formatter.dateFormat = "HH:mm"
+    return formatter.string(from: instant)
+  }
   var symbol: String {
+    if title.contains("결과") || title.contains("체결") { return "checkmark.circle" }
+    if title.contains("실행") || title.contains("제출") { return "paperplane" }
     if title.contains("주문") { return "list.bullet.rectangle" }
-    if title.contains("실행") { return "paperplane" }
-    if title.contains("결과") { return "checklist" }
     if title.contains("비교") { return "chart.xyaxis.line" }
     return "doc.text"
   }

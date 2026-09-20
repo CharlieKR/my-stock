@@ -37,7 +37,21 @@ import Testing
     id: "2",
     text: "주문표\n동파\n- 매도 15주 @ $166.26 / $2,493.90 LOC\nTide\n- 매수 80주 @ $108.41 / $8,672.80 LOC",
     date: "")
-  #expect(message.orderPreviews[0].name == "동파")
-  #expect(message.orderPreviews[1].name == "Tide")
+  #expect(message.orderPreviews[0].name == "SOXL")
+  #expect(message.orderPreviews[1].name == "SOXL")
   #expect(message.orderPreviews[1].type == "LOC")
+}
+
+@Test func keepsOnlyOrderLifecycleMessagesForTheTimeline() {
+  let settlement = ThreadMessage(
+    id: "settled", text: "정산 완료\n자산 : 총 ₩173,660,462", date: "2026-09-18T07:00:00Z")
+  let comparison = ThreadMessage(
+    id: "comparison", text: "전략비교\n결론: 동일", date: "2026-09-18T06:00:00Z")
+  let result = ThreadMessage(
+    id: "result", text: "주문결과\n- 매도 SOXL 15주 @ $166.26 / $2,493.90 LOC · 미체결",
+    date: "2026-09-18T06:50:00Z")
+  #expect(!settlement.isOrderActivity)
+  #expect(!comparison.isOrderActivity)
+  #expect(result.isOrderActivity)
+  #expect(result.activityTitle == "체결 결과")
 }

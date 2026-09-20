@@ -22,7 +22,7 @@ struct NativeTabs: UIViewControllerRepresentable {
     ]
     let names = ["SOXL", "HYXL", "My"]
     let images = [
-      UIImage(named: "SOXLTab"), UIImage(named: "HYXLTab"),
+      monogramTabImage("SO"), monogramTabImage("HY"),
       UIImage(systemName: "person.crop.circle"),
     ]
     controller.viewControllers = contents.enumerated().map { index, content in
@@ -55,6 +55,29 @@ struct NativeTabs: UIViewControllerRepresentable {
     controller.overrideUserInterfaceStyle = appearance.interfaceStyle
     controller.updateTint()
   }
+}
+
+private func monogramTabImage(_ text: String) -> UIImage {
+  let size = CGSize(width: 30, height: 23)
+  let format = UIGraphicsImageRendererFormat()
+  format.scale = UIScreen.main.scale
+  let font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+  let roundedFont = font.fontDescriptor.withDesign(.rounded).map {
+    UIFont(descriptor: $0, size: font.pointSize)
+  } ?? font
+  let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+    let attributes: [NSAttributedString.Key: Any] = [
+      .font: roundedFont,
+      .foregroundColor: UIColor.black,
+      .kern: 0.4,
+    ]
+    let measured = (text as NSString).size(withAttributes: attributes)
+    let origin = CGPoint(
+      x: (size.width - measured.width) / 2,
+      y: (size.height - measured.height) / 2)
+    (text as NSString).draw(at: origin, withAttributes: attributes)
+  }
+  return image.withRenderingMode(.alwaysTemplate)
 }
 
 private extension AppAppearance {

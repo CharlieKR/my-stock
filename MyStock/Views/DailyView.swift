@@ -295,82 +295,36 @@ struct ThreadSection: View {
   @State private var error: String?
   @State private var loading = false
   @State private var activeID = ""
+  private var messages: [ThreadMessage] {
+    (thread?.messages ?? []).filter(\.isOrderActivity).sorted { $0.date < $1.date }
+  }
+  private var loadID: String {
+    report.id + report.updatedAt + (report.messages ?? []).map { $0.id + $0.text }.joined()
+  }
   var body: some View {
     VStack(spacing: 12) {
-      SectionLabel(title: "주문과 리포트", subtitle: "시간순 기록")
-      if hidden {
-        Surface { Notice(text: "금액 숨김을 끄면 주문과 상세 리포트를 볼 수 있어요.", symbol: "eye.slash") }
-      } else {
-        if loading { ProgressView().padding() }
-        if let error {
-          Surface {
-            Notice(text: error)
-            Button("다시 불러오기") { Task { await load() } }.font(.subheadline)
-          }
-        }
-        if let thread {
-          if thread.partial { Notice(text: "스레드가 길어 일부 메시지만 표시됩니다. Slack에서 전체를 볼 수 있습니다.") }
-          if thread.messages.isEmpty {
-            Surface { Notice(text: "아직 상세 리포트가 없습니다.", symbol: "tray") }
-          }
-          ForEach(thread.messages) { message in
-            Surface(padding: 18) {
-              DisclosureGroup {
-                if !message.orderPreviews.isEmpty {
-                  VStack(spacing: 16) {
-                    ForEach(message.orderPreviews) { order in
-                      HStack(alignment: .top, spacing: 10) {
-                        Pill(text: order.side, color: order.side == "매수" ? .hyxlAccent : .red)
-                        VStack(alignment: .leading, spacing: 5) {
-                          Text(order.name).font(.subheadline.weight(.semibold))
-                          Text("\(order.quantity)주 × \(order.price)").font(.caption)
-                            .foregroundStyle(.secondary)
-                          if !order.type.isEmpty {
-                            Text(order.type).font(.caption2).foregroundStyle(.tertiary)
-                          }
-                        }
-                        Spacer(minLength: 2)
-                        Text(order.amount).font(.subheadline.weight(.medium)).monospacedDigit()
-                          .lineLimit(1).minimumScaleFactor(0.6)
-                      }
-                    }
-                    DisclosureGroup("상세 원문") { messageText(message) }.font(.caption).tint(
-                      .secondary)
-                  }.padding(.top, 14)
-                } else {
-                  messageText(message)
-                }
-              } label: {
-                HStack(spacing: 12) {
-                  Image(systemName: message.symbol).foregroundStyle(report.investment.tint).frame(
-                    width: 24)
-                  Text(message.title).font(.subheadline.weight(.medium)).foregroundStyle(.primary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }.padding(.vertical, 4)
-              }
+      if loading || error != nil || !messages.isEmpty {
+        SectionLabel(title: "주문", subtitle: "시간순")
+        if hidden {
+          Surface { Notice(text: "금액 숨김을 끄면 주문을 볼 수 있어요.", symbol: "eye.slash") }
+        } else {
+          if loading { ProgressView().padding() }
+          if let error {
+            Surface {
+              Notice(text: error)
+              Button("다시 불러오기") { Task { await load() } }.font(.subheadline)
             }
           }
-        }
-        if report.hasLegacySettlementSource {
-          Surface(padding: 18) {
-            DisclosureGroup {
-              Text(ThreadMessage.clean(report.rawText)).font(.subheadline).lineSpacing(6)
-                .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(
-                  .top, 12)
-            } label: {
-              Label("정산 요약 원문", systemImage: "doc.plaintext").font(.subheadline).foregroundStyle(
-                .primary)
-            }
+          if thread?.partial == true {
+            Notice(text: "일부 주문 기록만 표시됩니다.")
           }
-        }
-        if let url = URL(string: report.slackURL), !report.slackURL.isEmpty {
-          Link(destination: url) {
-            Label("Slack에서 보기", systemImage: "arrow.up.right.square").font(.footnote)
-          }.frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 4)
+          ForEach(messages) { message in
+            activityCard(message)
+          }
         }
       }
     }
-    .task(id: report.id + report.updatedAt) { await load() }
+    .task(id: loadID) { await load() }
   }
   private func load() async {
     let id = report.id
@@ -389,9 +343,43 @@ struct ThreadSection: View {
     }
     if activeID == id { loading = false }
   }
-  private func messageText(_ message: ThreadMessage) -> some View {
-    Text(message.body).font(.subheadline).lineSpacing(6).textSelection(.enabled).frame(
-      maxWidth: .infinity, alignment: .leading
-    ).padding(.top, 12)
+
+  private func activityCard(_ message: ThreadMessage) -> some View {
+    Surface(padding: 18) {
+      HStack(spacing: 12) {
+        Image(systemName: message.symbol).foregroundStyle(report.investment.tint).frame(width: 24)
+        Text(message.activityTitle).font(.subheadline.weight(.semibold))
+        Spacer()
+        if !message.timeLabel.isEmpty {
+          Text(message.timeLabel).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+        }
+      }
+      if message.orderPreviews.isEmpty {
+        Pill(
+          text: message.activityStatus,
+          symbol: message.activityTitle == "체결 결과" ? "checkmark.circle" : "checkmark",
+          color: message.activityStatus == "미체결" ? .red : report.investment.tint)
+      } else {
+        Divider()
+        VStack(spacing: 16) {
+          ForEach(message.orderPreviews) { order in
+            HStack(alignment: .top, spacing: 10) {
+              Pill(text: order.side, color: order.side == "매수" ? .inspectionAccent : .red)
+              VStack(alignment: .leading, spacing: 5) {
+                Text(order.name).font(.subheadline.weight(.semibold))
+                Text("\(order.quantity)주 × \(order.price)").font(.caption)
+                  .foregroundStyle(.secondary)
+                if !order.type.isEmpty {
+                  Text(order.type).font(.caption2).foregroundStyle(.tertiary)
+                }
+              }
+              Spacer(minLength: 2)
+              Text(order.amount).font(.subheadline.weight(.medium)).monospacedDigit()
+                .lineLimit(1).minimumScaleFactor(0.6)
+            }
+          }
+        }
+      }
+    }
   }
 }

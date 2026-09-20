@@ -18,12 +18,10 @@ extension ThreadMessage {
           #"^-\s*(매수|매도)\s+(?:(\S+)\s+)?([\d,]+)주\s*@\s*([$₩][\d,.]+)\s*/\s*([$₩][\d,.]+)(?:\s+(.+))?"#
       )
     else { return [] }
-    var strategy = "SOXL"
     var rows: [OrderPreview] = []
     for line in body.components(separatedBy: .newlines).map({
       $0.trimmingCharacters(in: .whitespaces)
     }) {
-      if ["동파", "동파법", "Tide"].contains(line) { strategy = line }
       let source = line as NSString
       guard
         let match = expression.firstMatch(
@@ -35,7 +33,7 @@ extension ThreadMessage {
       }
       rows.append(
         OrderPreview(
-          id: rows.count, side: text(1), name: text(2).isEmpty ? strategy : text(2),
+          id: rows.count, side: text(1), name: text(2).isEmpty ? "SOXL" : text(2),
           quantity: text(3), price: text(4), amount: text(5), type: text(6)))
     }
     return rows
