@@ -58,12 +58,12 @@ struct DailyView: View {
                     : "주문 정보를 먼저 확인할 수 있어요.\n정산이 끝나면 자산과 손익이 표시됩니다."))
           }
         }
-        if !report.details.isEmpty {
+        if report.isValued && !report.details.isEmpty {
           VStack(spacing: 12) {
             SectionLabel(title: "오늘의 요약", subtitle: report.statusTitle)
             Surface {
               ForEach(
-                Array(report.details.filter { !["오늘", "체결"].contains($0.title) }.enumerated()),
+                Array(report.details.filter { !["오늘", "체결", "보관 기록"].contains($0.title) }.enumerated()),
                 id: \.element.id
               ) { index, detail in
                 if index > 0 { Divider() }

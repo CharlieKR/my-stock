@@ -22,6 +22,15 @@ import Testing
   #expect(message.orderPreviews[0].side == "매수")
   #expect(message.orderPreviews[0].name == "KODEX")
   #expect(message.orderPreviews[0].amount == "₩27,105,060")
+  #expect(message.orderPreviews[0].type == "LOC")
+}
+
+@Test func parsesOrderStatusAfterOrderType() {
+  let message = ThreadMessage(
+    id: "submitted",
+    text: "주문 제출\n- 매도 ACE 1,026주 @ ₩10,960 / ₩11,244,960 LOC · 제출 완료",
+    date: "2026-09-21T00:01:00Z")
+  #expect(message.orderPreviews[0].type == "LOC · 제출 완료")
 }
 @Test func parsesStrategyHeadingsAndOrderTypes() {
   let message = ThreadMessage(

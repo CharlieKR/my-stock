@@ -7,7 +7,7 @@ import { performanceWithPeriods, calculationVersion } from './performance.mjs';
 
 const sum=(rows,key)=>rows.some(r=>r[key]===null||r[key]===undefined)?null:rows.reduce((a,r)=>a.plus(r[key]),new Decimal(0)).toString();
 const number=value=>Number(value).toLocaleString('ko-KR',{maximumFractionDigits:2});
-function orderLine(order,currency){
+function orderLine(order,currency,suffix=''){
   const side=String(order.side??'').toUpperCase()==='BUY'?'매수':String(order.side??'').toUpperCase()==='SELL'?'매도':order.side??'';
   const symbol=order.symbol??order.name??'SOXL';
   const qty=Number(order.qty??order.quantity??0);
@@ -16,7 +16,47 @@ function orderLine(order,currency){
   const mark=currency==='KRW'?'₩':'$';
   const amount=new Decimal(price).times(qty);
   const type=order.order_type??order.trade_type??order.type??'';
-  return `- ${side} ${symbol} ${number(qty)}주 @ ${mark}${number(price)} / ${mark}${number(amount)}${type?` ${type}`:''}`;
+  const note=[type,suffix].filter(Boolean).join(' · ');
+  return `- ${side} ${symbol} ${number(qty)}주 @ ${mark}${number(price)} / ${mark}${number(amount)}${note?` ${note}`:''}`;
+}
+const statusLabel=status=>{
+  const value=String(status??'').toUpperCase();
+  if(['SENT','SUBMITTED','OPEN','READY'].includes(value))return value==='READY'?'예정':'제출 완료';
+  if(['FILLED','DONE'].includes(value))return '체결 완료';
+  if(['REJECTED','FAILED'].includes(value))return '거부';
+  if(['CANCELED','CANCELLED','SKIPPED'].includes(value))return '취소';
+  return status??'';
+};
+function timelineMessages(day){
+  const messages=[];
+  for(const stage of ['plan','execution','settled']){
+    const batches=day.filter(b=>b.stage===stage);
+    if(!batches.length)continue;
+    const date=batches.map(b=>b.capturedAt).sort().at(-1);
+    const orders=batches.flatMap(b=>(b.orders??[]).map(o=>({...o,currency:b.currency})));
+    if(stage==='plan'&&orders.length){
+      messages.push({id:'plan-orders',date,text:'주문표 생성\n'+orders.map(o=>orderLine(o,o.currency,'예정')).join('\n')});
+    }
+    if(stage==='execution'&&orders.length){
+      messages.push({id:'execution-orders',date,text:'주문 제출\n'+orders.map(o=>orderLine(o,o.currency,statusLabel(o.status)||'제출')).join('\n')});
+    }
+    if(stage==='settled'){
+      const fills=batches.flatMap(b=>(b.evidence?.fills??[]).map(f=>({fill:f,batch:b})));
+      const fillLines=fills.flatMap(({fill,batch})=>{
+        if(Array.isArray(fill)){
+          const order=batch.orders?.find(o=>String(o.id)===String(fill[0]));
+          return order?[orderLine({...order,qty:fill[1].matchedQty,limit_price:new Decimal(fill[1].matchedAmount).div(fill[1].matchedQty)},batch.currency,'체결 완료')]:[];
+        }
+        const order=batch.orders?.find(o=>String(o.id)===String(fill.order_id));
+        return [orderLine({...fill,side:order?.side,symbol:fill.symbol??order?.symbol,order_type:order?.order_type,limit_price:fill.price},batch.currency,'체결 완료')];
+      });
+      const unfilled=orders.filter(o=>Number(o.filled_qty??0)<Number(o.qty??o.quantity??0));
+      const sections=[fillLines.length?fillLines.join('\n'):'체결 없음'];
+      if(unfilled.length)sections.push('미체결/거부\n'+unfilled.map(o=>orderLine(o,o.currency,statusLabel(o.status)||'미체결')).join('\n'));
+      messages.push({id:'settled-fills',date,text:'체결 결과\n'+sections.join('\n\n')});
+    }
+  }
+  return messages.sort((a,b)=>a.date.localeCompare(b.date));
 }
 export function normalizeBatches(batches,investment) {
   const ids=investment==='SOXL'?['soxl_live']:(process.env.MY_STOCK_HYXL_PORTFOLIOS??'kiwoom_main,ls_main').split(',');
@@ -33,7 +73,10 @@ export function normalizeBatches(batches,investment) {
     const pnl=complete?sum(present,'cumulativePnl'):null;
     const principal=complete?sum(present,'principal'):null;
     const capturedAt=day.map(b=>b.capturedAt).sort().at(-1);
-    const details=day.flatMap(b=>b.details.map(d=>({...d,id:b.portfolioId+':'+b.stage+':'+d.id})));
+    const sourceDetails=day.filter(b=>b.stage==='settled').flatMap(b=>b.details.map(d=>({...d,id:b.portfolioId+':'+b.stage+':'+d.id})));
+    const settledFills=present.flatMap(b=>b.evidence?.fills??[]);
+    const details=sourceDetails.length||!complete?sourceDetails:[{id:investment+':settled:fills',title:'체결',
+      text:settledFills.length?`${settledFills.length}건 체결`:'없음'}];
     const planBatches=day.filter(b=>b.stage==='plan');
     const plannedOrderCount=planBatches.reduce((count,b)=>count+(b.orders?.length??0),0);
     const quality=complete&&present.every(b=>b.quality==='broker_reconciled')?'broker_reconciled':'incomplete';
@@ -47,20 +90,7 @@ export function normalizeBatches(batches,investment) {
       quality,availableDate:new Date(valueDate).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}),
       cashEvents,cashflowCoverageFrom:coverage,
       hasOrderPlan:planBatches.length>0,plannedOrderCount,
-      messages:day.flatMap(b=>[
-        ...b.details.map(d=>({id:b.portfolioId+':'+b.stage+':'+d.id,text:d.title+'\n'+d.text,date:b.capturedAt})),
-        ...(b.orders?.length?[{id:b.portfolioId+':'+b.stage+':orders',date:b.capturedAt,
-          text:(b.stage==='plan'?'주문 계획':'주문 기록')+' · '+b.portfolioId+'\n'+b.orders.map(o=>orderLine(o,b.currency)).join('\n')
-            +'\n'+(b.stage==='plan'?'제출 전 계획이며 실제 체결과 다를 수 있습니다.':'체결 상태는 주문별 기록을 확인해 주세요.')}]:[]),
-        ...(b.evidence?.fills?.length?[{id:b.portfolioId+':'+b.stage+':fills',date:b.capturedAt,
-          text:'체결 결과 · '+b.portfolioId+'\n'+b.evidence.fills.flatMap(f=>{
-            if(Array.isArray(f)) {
-              const o=b.orders?.find(o=>String(o.id)===String(f[0]));
-              return o?[`${o.symbol} · ${o.side} · ${f[1].matchedQty}주 · 체결금액 ${f[1].matchedAmount}`]:[];
-            }
-            return [`${f.symbol} · ${f.qty}주 × ${f.price} · ${f.filled_at??''}`];
-          }).join('\n')}]:[])
-      ])};
+      messages:timelineMessages(day)};
   });
 }
 

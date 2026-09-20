@@ -91,7 +91,8 @@ test('future or incomplete source is not a combined valuation',()=>{
 const batch=(extra={})=>({schemaVersion:2,investment:'HYXL',portfolioId:'kiwoom_main',date:'2026-09-18',stage:'settled',capturedAt:'2026-09-18T08:00:00Z',currency:'KRW',nav:'100',stockValue:'80',cash:'20',principal:'90',cumulativePnl:'10',dailyPnl:'1',quality:'broker_reconciled',cashEvents:[],details:[],...extra});
 test('missing one HYXL account cannot silently shrink total assets',()=>{
   assert.equal(normalizeBatches([batch()],'HYXL')[0].totalAssets,null);
-  assert.equal(normalizeBatches([batch(),batch({portfolioId:'ls_main',nav:'200'})],'HYXL')[0].totalAssets,'300');
+  const complete=normalizeBatches([batch(),batch({portfolioId:'ls_main',nav:'200'})],'HYXL')[0];
+  assert.equal(complete.totalAssets,'300');assert.deepEqual(complete.details.map(d=>[d.title,d.text]),[['체결','없음']]);
 });
 test('future plan is queryable without becoming a valuation',()=>{
   const plan=batch({date:'2026-09-21',stage:'plan',nav:null,stockValue:null,cash:null,principal:null,
@@ -99,7 +100,19 @@ test('future plan is queryable without becoming a valuation',()=>{
   const result=normalizeBatches([plan],'HYXL')[0];
   assert.equal(result.status,'pending');assert.equal(result.totalAssets,null);
   assert.equal(result.hasOrderPlan,true);assert.equal(result.plannedOrderCount,1);
-  assert.match(result.messages.at(-1).text,/주문 계획.*매수.*2,141주.*₩12,660.*₩27,105,060/s);
+  assert.deepEqual(result.details,[]);
+  assert.match(result.messages.at(-1).text,/주문표 생성.*매수.*2,141주.*₩12,660.*₩27,105,060.*예정/s);
+});
+test('plan, submission and fills are presented once in chronological order without account names',()=>{
+  const rows=[
+    batch({date:'2026-09-21',stage:'plan',capturedAt:'2026-09-18T07:30:00Z',nav:null,quality:'incomplete',orders:[{id:'a',symbol:'KODEX',side:'BUY',qty:2,limit_price:100,status:'ready'}]}),
+    batch({date:'2026-09-21',stage:'execution',capturedAt:'2026-09-21T00:01:00Z',nav:null,quality:'incomplete',orders:[{id:'a',symbol:'KODEX',side:'BUY',qty:2,limit_price:100,status:'SENT'}]}),
+    batch({date:'2026-09-21',stage:'settled',capturedAt:'2026-09-21T07:00:00Z',orders:[{id:'a',symbol:'KODEX',side:'BUY',qty:2,limit_price:100,status:'FILLED',filled_qty:2}],evidence:{fills:[{order_id:'a',symbol:'KODEX',qty:2,price:99,filled_at:'2026-09-21T06:59:00Z'}]}}),
+  ];
+  const messages=normalizeBatches(rows,'HYXL')[0].messages;
+  assert.deepEqual(messages.map(m=>m.text.split('\n')[0]),['주문표 생성','주문 제출','체결 결과']);
+  assert.doesNotMatch(messages.map(m=>m.text).join('\n'),/kiwoom_main|동파|Tide/);
+  assert.match(messages[1].text,/제출 완료/);assert.match(messages[2].text,/체결 완료/);
 });
 test('migration grants only reporting reads; retry/correction revisions preserve history',async()=>{
   const db=new PGlite();

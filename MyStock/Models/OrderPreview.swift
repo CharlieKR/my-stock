@@ -12,10 +12,10 @@ struct OrderPreview: Identifiable {
 
 extension ThreadMessage {
   var orderPreviews: [OrderPreview] {
-    guard title.contains("주문"),
+    guard title.contains("주문") || title.contains("체결"),
       let expression = try? NSRegularExpression(
         pattern:
-          #"^-\s*(매수|매도)\s+(?:(\S+)\s+)?([\d,]+)주\s*@\s*([$₩][\d,.]+)\s*/\s*([$₩][\d,.]+)(?:\s+(\S+))?"#
+          #"^-\s*(매수|매도)\s+(?:(\S+)\s+)?([\d,]+)주\s*@\s*([$₩][\d,.]+)\s*/\s*([$₩][\d,.]+)(?:\s+(.+))?"#
       )
     else { return [] }
     var strategy = "SOXL"
