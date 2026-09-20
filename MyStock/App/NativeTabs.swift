@@ -22,7 +22,7 @@ struct NativeTabs: UIViewControllerRepresentable {
     ]
     let names = ["SOXL", "HYXL", "My"]
     let images = [
-      monogramTabImage("SO"), monogramTabImage("HY"),
+      orbitTabImage("SO"), orbitTabImage("HY"),
       UIImage(systemName: "person.crop.circle"),
     ]
     controller.viewControllers = contents.enumerated().map { index, content in
@@ -57,24 +57,35 @@ struct NativeTabs: UIViewControllerRepresentable {
   }
 }
 
-private func monogramTabImage(_ text: String) -> UIImage {
-  let size = CGSize(width: 30, height: 25)
+private func orbitTabImage(_ text: String) -> UIImage {
+  let size = CGSize(width: 28, height: 28)
   let format = UIGraphicsImageRendererFormat()
   format.scale = 3
-  let font = UIFont.systemFont(ofSize: 11, weight: .bold)
+  let font = UIFont.systemFont(ofSize: 10, weight: .bold)
   let roundedFont = font.fontDescriptor.withDesign(.rounded).map {
     UIFont(descriptor: $0, size: font.pointSize)
   } ?? font
   let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
-    let frame = CGRect(x: 1.5, y: 1.5, width: size.width - 3, height: size.height - 3)
-    let badge = UIBezierPath(roundedRect: frame, cornerRadius: 7)
+    let center = CGPoint(x: size.width / 2, y: size.height / 2)
+    let radius: CGFloat = 11.8
+    // The opening and satellite dot keep the monogram light at tab-bar size.
+    let orbit = UIBezierPath(
+      arcCenter: center, radius: radius,
+      startAngle: -.pi / 4, endAngle: .pi / 14, clockwise: false)
     UIColor.black.setStroke()
-    badge.lineWidth = 1.5
-    badge.stroke()
+    orbit.lineWidth = 1.4
+    orbit.lineCapStyle = .round
+    orbit.stroke()
+    let dotAngle: CGFloat = -.pi / 7
+    let dot = CGPoint(
+      x: center.x + radius * cos(dotAngle), y: center.y + radius * sin(dotAngle))
+    UIColor.black.setFill()
+    UIBezierPath(ovalIn: CGRect(x: dot.x - 1.4, y: dot.y - 1.4, width: 2.8, height: 2.8))
+      .fill()
     let attributes: [NSAttributedString.Key: Any] = [
       .font: roundedFont,
       .foregroundColor: UIColor.black,
-      .kern: 0.4,
+      .kern: -0.5,
     ]
     let measured = (text as NSString).size(withAttributes: attributes)
     let origin = CGPoint(

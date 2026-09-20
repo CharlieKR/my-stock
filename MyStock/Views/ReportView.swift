@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ReportView: View {
   @Environment(ReportStore.self) private var store
+  @Environment(\.dismiss) private var dismiss
   @AppStorage("hideAmounts") private var hidden = false
   @State private var scope: ReportScope = .all
   @State private var period: ReportPeriod = .all
@@ -199,7 +200,15 @@ struct ReportView: View {
       }
     }
     .navigationTitle("종합리포트").navigationBarTitleDisplayMode(.inline)
+    .navigationBarBackButtonHidden(true)
     .toolbar {
+      ToolbarItem(placement: .topBarLeading) {
+        Button { dismiss() } label: {
+          Image(systemName: "chevron.left")
+        }
+        .accessibilityLabel("뒤로")
+        .accessibilityIdentifier("report.back")
+      }
       ToolbarItem(placement: .topBarTrailing) {
         Button {
           showMethod = true
