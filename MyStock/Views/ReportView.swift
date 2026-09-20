@@ -34,6 +34,13 @@ struct ReportView: View {
     }
   }
   private var months: [MonthlyPerformance] { allMonths }
+  private var inspectedChange: Double? { yearPoints.assetChange(at: inspectedPoint) }
+  private var inspectionColor: Color { .movement(inspectedChange) }
+  private var inspectedChangeText: String? {
+    guard inspectedPoint != nil else { return nil }
+    guard let inspectedChange else { return "(이전 기록 없음)" }
+    return "(\(Format.money(inspectedChange, scope.currency, signed: true, hidden: hidden)))"
+  }
   private var selectedSummary: MonthlyPerformance? {
     if let summary=serverPerformance?.summary { return summary.display }
     guard store.isDemo,let first=points.first,let last=points.last else { return nil }
@@ -74,19 +81,22 @@ struct ReportView: View {
           HStack {
             Text(inspectedPoint == nil ? "총 자산" : "선택일 자산").font(.subheadline)
               .lineLimit(1).minimumScaleFactor(0.7)
-              .foregroundStyle(inspectedPoint == nil ? Color.secondary : .inspectionAccent)
+              .foregroundStyle(inspectedPoint == nil ? Color.secondary : inspectionColor)
               .accessibilityIdentifier("report.assetTitle")
             Spacer()
-            Pill(text: inspectedPoint == nil ? scope.currency : "조회 중", color:inspectedPoint == nil ? .brandAccent : .inspectionAccent)
+            Pill(text: inspectedPoint == nil ? scope.currency : "조회 중", color:inspectedPoint == nil ? .brandAccent : inspectionColor)
           }
           Text(Format.money((inspectedPoint ?? yearPoints.last)?.assets, scope.currency, hidden: hidden)).font(
             .system(.largeTitle, design: .rounded).weight(.semibold)
           ).monospacedDigit().lineLimit(1).minimumScaleFactor(0.55)
-            .foregroundStyle(inspectedPoint == nil ? Color.primary : .inspectionAccent)
+            .foregroundStyle(inspectedPoint == nil ? Color.primary : inspectionColor)
             .accessibilityIdentifier("report.assetAmount")
           if let latest = inspectedPoint ?? yearPoints.last {
-            Text("\(ReportDate.label(latest.date, format: "yyyy년 M월 d일")) 기준").font(.caption)
-              .foregroundStyle(inspectedPoint == nil ? Color.secondary : .inspectionAccent)
+            HStack(spacing: 4) {
+              Text("\(ReportDate.label(latest.date, format: "yyyy년 M월 d일")) 기준")
+              if let inspectedChangeText { Text(inspectedChangeText).foregroundStyle(inspectionColor) }
+            }.font(.caption)
+              .foregroundStyle(inspectedPoint == nil ? Color.secondary : inspectionColor)
               .lineLimit(1).minimumScaleFactor(0.8)
               .accessibilityIdentifier("report.assetDate")
           }
@@ -113,7 +123,7 @@ struct ReportView: View {
           }
         }
         .overlay {
-          RoundedRectangle(cornerRadius:26).strokeBorder(Color.inspectionAccent.opacity(inspectedPoint == nil ? 0 : 0.35),lineWidth:1)
+          RoundedRectangle(cornerRadius:26).strokeBorder(inspectionColor.opacity(inspectedPoint == nil ? 0 : 0.35),lineWidth:1)
             .allowsHitTesting(false)
         }
         if scope == .all, let latest = yearPoints.last {
@@ -285,6 +295,14 @@ struct MonthDetailView: View {
   let points: [AssetPoint]
   @AppStorage("hideAmounts") private var hidden = false
   @State private var inspectedPoint: AssetPoint?
+  private var inspectedChange: Double? { points.assetChange(at: inspectedPoint) }
+  private var inspectionColor: Color { .movement(inspectedChange) }
+  private var inspectedAssetTitle: String {
+    guard let inspectedPoint else { return "마지막 자산" }
+    let date = ReportDate.label(inspectedPoint.date, format: "M.d")
+    guard let inspectedChange else { return "\(date) 자산 (이전 기록 없음)" }
+    return "\(date) 자산 (\(Format.money(inspectedChange, scope.currency, signed: true, hidden: hidden)))"
+  }
   var body: some View {
     Canvas {
       Text(
@@ -310,9 +328,9 @@ struct MonthDetailView: View {
           Metric(
             title: "시작 자산", value: Format.money(month.startAssets, scope.currency, hidden: hidden))
           Metric(
-            title: inspectedPoint.map { "\(ReportDate.label($0.date,format:"M.d")) 자산 · 조회 중" } ?? "마지막 자산",
+            title: inspectedAssetTitle,
             value: Format.money(inspectedPoint?.assets ?? month.endAssets, scope.currency, hidden: hidden),
-            color:inspectedPoint == nil ? .primary : .inspectionAccent)
+            color:inspectedPoint == nil ? .primary : inspectionColor)
             .lineLimit(1).minimumScaleFactor(0.7)
         }
         if !hidden { AssetChart(points: points, currency: scope.currency,
@@ -327,7 +345,7 @@ struct MonthDetailView: View {
         }
       }
       .overlay {
-        RoundedRectangle(cornerRadius:26).strokeBorder(Color.inspectionAccent.opacity(inspectedPoint == nil ? 0 : 0.35),lineWidth:1)
+        RoundedRectangle(cornerRadius:26).strokeBorder(inspectionColor.opacity(inspectedPoint == nil ? 0 : 0.35),lineWidth:1)
           .allowsHitTesting(false)
       }
       SectionLabel(title: "일별 자산")

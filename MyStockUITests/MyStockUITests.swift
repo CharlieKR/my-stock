@@ -100,7 +100,9 @@ import XCTest
     let originalAmount=app.staticTexts["report.assetAmount"].label
     let originalDate=app.staticTexts["report.assetDate"].label
     capture(app,"Chart-before-inspection")
-    chart.coordinate(withNormalizedOffset:CGVector(dx:0.35,dy:0.5)).press(forDuration:12)
+    // The demo series is falling around the first quarter, which also exercises
+    // the negative inspection state before verifying that release restores it.
+    chart.coordinate(withNormalizedOffset:CGVector(dx:0.25,dy:0.5)).press(forDuration:12)
     XCTAssertEqual(app.staticTexts["report.assetTitle"].label,"총 자산")
     XCTAssertEqual(app.staticTexts["report.assetAmount"].label,originalAmount)
     XCTAssertEqual(app.staticTexts["report.assetDate"].label,originalDate)

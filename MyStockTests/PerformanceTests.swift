@@ -40,6 +40,16 @@ private func monthSeries(assets: (Int) -> Double, pnl: (Int) -> Double?) -> [Dai
   #expect(months.map(\.month) == dates.map { String($0.prefix(7)) }.reversed())
   #expect(Performance.points(data, scope: .soxl).first?.date == "2024-01-31")
 }
+@Test func assetPointChangeUsesImmediatelyPreviousRecord() {
+  let points = [
+    AssetPoint(date: "2026-09-01", assets: 100, constituents: [], fx: 1),
+    AssetPoint(date: "2026-09-02", assets: 125, constituents: [], fx: 1),
+    AssetPoint(date: "2026-09-05", assets: 115, constituents: [], fx: 1),
+  ]
+  #expect(points.assetChange(at: points[0]) == nil)
+  #expect(points.assetChange(at: points[1]) == 25)
+  #expect(points.assetChange(at: points[2]) == -10)
+}
 @Test func depositIsExcludedAndDietzWeighted() {
   let data = envelope(
     monthSeries(assets: { 1000 + ($0 >= 15 ? 500 : 0) + Double($0) * 5 }, pnl: { Double($0) * 5 }))

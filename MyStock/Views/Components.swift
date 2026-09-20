@@ -24,6 +24,12 @@ extension Color {
     guard let value else { return .secondary }
     return value >= 0 ? .brandAccent : .red
   }
+  static func movement(_ value: Double?) -> Color {
+    guard let value else { return .brandAccent }
+    if value > 0 { return .inspectionAccent }
+    if value < 0 { return .red }
+    return .brandAccent
+  }
 }
 extension Investment { var tint: Color { self == .soxl ? .brandAccent : .hyxlAccent } }
 
@@ -125,11 +131,14 @@ struct AssetChart: View {
   var tint: Color = .brandAccent
   @Binding var selectedPoint: AssetPoint?
   @State private var selectedDate: Date?
-  private var activeTint: Color { selectedDate == nil ? tint : .inspectionAccent }
   private var selected: AssetPoint? {
     selectedDate.flatMap { target in
       points.min { abs($0.day.timeIntervalSince(target)) < abs($1.day.timeIntervalSince(target)) }
     }
+  }
+  private var selectedChange: Double? { points.assetChange(at: selected) }
+  private var activeTint: Color {
+    selectedDate == nil ? tint : .movement(selectedChange)
   }
   private var domain: ClosedRange<Double> {
     let values = points.map(\.assets)
@@ -193,7 +202,10 @@ struct AssetChart: View {
       .frame(height: 160)
       .accessibilityLabel("자산 변화 차트")
       .accessibilityIdentifier("asset.chart")
-      .accessibilityValue(selected.map { "\(ReportDate.label($0.date,format:"M월 d일")), \(Format.money($0.assets,currency))" } ?? "최신 자산")
+      .accessibilityValue(selected.map {
+        let change = selectedChange.map { " (\(Format.money($0,currency,signed:true)))" } ?? ""
+        return "\(ReportDate.label($0.date,format:"M월 d일")), \(Format.money($0.assets,currency))\(change)"
+      } ?? "최신 자산")
   }
   private func clearSelection() {
     selectedDate = nil

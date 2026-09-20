@@ -21,6 +21,15 @@ struct AssetPoint: Identifiable {
   var hasCarriedValuation: Bool { constituents.contains { $0.date != date } }
 }
 
+extension Array where Element == AssetPoint {
+  /// The change from the immediately preceding recorded point in this series.
+  func assetChange(at point: AssetPoint?) -> Double? {
+    guard let point, let index = firstIndex(where: { $0.id == point.id }), index > startIndex
+    else { return nil }
+    return point.assets - self[index - 1].assets
+  }
+}
+
 struct MonthlyPerformance: Identifiable {
   let month: String
   let startDate: String
