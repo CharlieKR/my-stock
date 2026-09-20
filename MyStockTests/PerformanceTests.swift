@@ -10,7 +10,7 @@ private func report(_ investment: Investment, _ date: String, assets: Double, pn
     id: "\(investment)-\(date)", investment: investment, date: date, currency: investment.currency,
     status: "settled", totalAssets: assets, stockValue: assets * 0.5, cash: assets * 0.5,
     cumulativePnl: pnl, cumulativeReturn: nil, dailyPnl: nil, dailyPnlLabel: "오늘 손익", details: [],
-    rawText: "", slackURL: "", threadTS: "", updatedAt: "")
+    rawText: "", slackURL: "", threadTS: "", updatedAt: "", quality: nil)
 }
 private func envelope(_ reports: [DailyReport], rates: [FXRate] = []) -> ReportEnvelope {
   ReportEnvelope(
@@ -49,6 +49,25 @@ private func monthSeries(assets: (Int) -> Double, pnl: (Int) -> Double?) -> [Dai
   #expect(points.assetChange(at: points[0]) == nil)
   #expect(points.assetChange(at: points[1]) == 25)
   #expect(points.assetChange(at: points[2]) == -10)
+}
+@Test func settlementSourceIsOnlyVisibleForHistoricalSlackRecords() throws {
+  let base = """
+    {"id":"SOXL-2026-09-18","investment":"SOXL","date":"2026-09-18","currency":"USD",\
+    "status":"settled","totalAssets":"100","stockValue":"50","cash":"50",\
+    "cumulativePnl":"0","cumulativeReturn":"0","dailyPnl":"0","dailyPnlLabel":"오늘 손익",\
+    "details":[],"rawText":"원문","slackURL":"","threadTS":"","updatedAt":""}
+    """
+  let decoder = JSONDecoder()
+  let database = try decoder.decode(DailyReport.self, from: Data(base.utf8))
+  #expect(!database.hasLegacySettlementSource)
+  let archived = try decoder.decode(
+    DailyReport.self,
+    from: Data(base.replacingOccurrences(of: "\"updatedAt\":\"\"", with: "\"updatedAt\":\"\",\"quality\":\"legacy_archive\"").utf8))
+  #expect(archived.hasLegacySettlementSource)
+  let oldSlack = try decoder.decode(
+    DailyReport.self,
+    from: Data(base.replacingOccurrences(of: "\"slackURL\":\"\"", with: "\"slackURL\":\"https://slack.com/archive\"").utf8))
+  #expect(oldSlack.hasLegacySettlementSource)
 }
 @Test func depositIsExcludedAndDietzWeighted() {
   let data = envelope(

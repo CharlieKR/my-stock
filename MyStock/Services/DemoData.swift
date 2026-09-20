@@ -33,7 +33,7 @@ enum DemoData {
                 text: investment == .soxl ? "오늘 미진입 · 조건 대기" : "ACE · KODEX 정상 운용"),
             ],
             rawText: "샘플 리포트입니다. 실제 투자 정보가 아닙니다.", slackURL: "", threadTS: "",
-            updatedAt: "2026-09-18T08:00:00Z"))
+            updatedAt: "2026-09-18T08:00:00Z", quality: "demo"))
       }
     }
     return ReportEnvelope(

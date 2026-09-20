@@ -13,7 +13,8 @@ enum Investment: String, Codable, CaseIterable, Identifiable, Sendable {
 struct DailyReport: Codable, Identifiable, Sendable {
   enum CodingKeys: String, CodingKey {
     case id, investment, date, currency, status, totalAssets, stockValue, cash, cumulativePnl
-    case cumulativeReturn, dailyPnl, dailyPnlLabel, details, rawText, slackURL, threadTS, updatedAt, messages
+    case cumulativeReturn, dailyPnl, dailyPnlLabel, details, rawText, slackURL, threadTS, updatedAt
+    case messages, quality
   }
   var messages: [ThreadMessage]? = nil
   let id: String
@@ -33,9 +34,13 @@ struct DailyReport: Codable, Identifiable, Sendable {
   let slackURL: String
   let threadTS: String
   let updatedAt: String
+  let quality: String?
   var day: Date { ReportDate.parse(date) }
   var isValued: Bool { status == "settled" && totalAssets != nil }
   var statusTitle: String { status == "closed" ? "휴장" : status == "settled" ? "정산 완료" : "정산 대기" }
+  var hasLegacySettlementSource: Bool {
+    quality == "legacy_archive" || (quality == nil && !slackURL.isEmpty)
+  }
 }
 
 struct ReportDetail: Codable, Identifiable, Sendable {

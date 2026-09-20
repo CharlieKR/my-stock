@@ -314,14 +314,16 @@ struct ThreadSection: View {
             }
           }
         }
-        Surface(padding: 18) {
-          DisclosureGroup {
-            Text(ThreadMessage.clean(report.rawText)).font(.subheadline).lineSpacing(6)
-              .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(
-                .top, 12)
-          } label: {
-            Label("정산 요약 원문", systemImage: "doc.plaintext").font(.subheadline).foregroundStyle(
-              .primary)
+        if report.hasLegacySettlementSource {
+          Surface(padding: 18) {
+            DisclosureGroup {
+              Text(ThreadMessage.clean(report.rawText)).font(.subheadline).lineSpacing(6)
+                .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(
+                  .top, 12)
+            } label: {
+              Label("정산 요약 원문", systemImage: "doc.plaintext").font(.subheadline).foregroundStyle(
+                .primary)
+            }
           }
         }
         if let url = URL(string: report.slackURL), !report.slackURL.isEmpty {

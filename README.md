@@ -45,7 +45,7 @@ node --env-file=/private/path/reader.env gateway/server.mjs
 
 자산 그래프를 길게 누르면 기존 총자산 영역이 선택 날짜의 자산·날짜와 직전 기록 대비 증감액으로 바뀝니다. 선택 중에는 증감액을 괄호로 표시하고 금액·그래프·포인트·카드 테두리를 상승 시 초록색, 하락 시 빨간색으로 표시합니다. 손을 떼거나 제스처가 취소되면 블루 기본 상태와 최신 총자산으로 복귀합니다. 선택값을 별도 행으로 삽입하지 않아 그래프 위치와 높이는 유지됩니다. 월별 상세에서는 마지막 자산 영역을 같은 방식으로 사용합니다.
 
-DB 미연결 또는 장애는 화면에 명시합니다. 기존 기록은 node gateway/import-legacy.mjs로 한 번 보존할 수 있습니다. Slack에 접속하지 않고 .local/reports.json을 legacy-reports.json으로 복사하며 기존 보관 파일은 덮어쓰지 않습니다. 새 DB 기록이 같은 날짜의 보관 기록을 대체합니다.
+DB 미연결 또는 장애는 화면에 명시합니다. 기존 기록은 node gateway/import-legacy.mjs로 한 번 보존할 수 있습니다. Slack에 접속하지 않고 .local/reports.json을 legacy-reports.json으로 복사하며 기존 보관 파일은 덮어쓰지 않습니다. `정산 요약 원문`은 이 보관 기록에서만 표시하고 신규 DB 발행 기록에서는 메뉴 자체를 숨깁니다. 새 DB 기록이 같은 날짜의 보관 기록을 대체합니다.
 
 기본 실행 경로는 Slack을 호출하지 않습니다. 기존 /v1 경로는 캐시 호환용이며 Slack 수집은 MY_STOCK_ENABLE_LEGACY_SLACK=true를 명시한 경우에만 동작합니다. 과거 수집 도구 gateway/sync.mjs는 전환 자료로 남겨 두었습니다.
 

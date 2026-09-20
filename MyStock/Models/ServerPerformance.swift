@@ -64,6 +64,7 @@ extension DailyReport {
     rawText=try c.decode(String.self,forKey:.rawText);slackURL=try c.decode(String.self,forKey:.slackURL)
     threadTS=try c.decode(String.self,forKey:.threadTS);updatedAt=try c.decode(String.self,forKey:.updatedAt)
     messages=try c.decodeIfPresent([ThreadMessage].self,forKey:.messages)
+    quality=try c.decodeIfPresent(String.self,forKey:.quality)
   }
 }
 extension FXRate {
