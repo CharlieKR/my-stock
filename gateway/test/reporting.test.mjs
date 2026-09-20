@@ -93,6 +93,14 @@ test('missing one HYXL account cannot silently shrink total assets',()=>{
   assert.equal(normalizeBatches([batch()],'HYXL')[0].totalAssets,null);
   assert.equal(normalizeBatches([batch(),batch({portfolioId:'ls_main',nav:'200'})],'HYXL')[0].totalAssets,'300');
 });
+test('future plan is queryable without becoming a valuation',()=>{
+  const plan=batch({date:'2026-09-21',stage:'plan',nav:null,stockValue:null,cash:null,principal:null,
+    cumulativePnl:null,dailyPnl:null,quality:'incomplete',orders:[{symbol:'0193T0.KS',side:'BUY',qty:2141,limit_price:12660,status:'ready'}]});
+  const result=normalizeBatches([plan],'HYXL')[0];
+  assert.equal(result.status,'pending');assert.equal(result.totalAssets,null);
+  assert.equal(result.hasOrderPlan,true);assert.equal(result.plannedOrderCount,1);
+  assert.match(result.messages.at(-1).text,/주문 계획.*매수.*2,141주.*₩12,660.*₩27,105,060/s);
+});
 test('migration grants only reporting reads; retry/correction revisions preserve history',async()=>{
   const db=new PGlite();
   try{

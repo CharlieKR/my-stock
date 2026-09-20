@@ -14,6 +14,12 @@ struct DailyView: View {
     if let selectedDate { return reports.first { $0.date == selectedDate } }
     return reports.first { $0.isValued } ?? reports.first
   }
+  private var upcomingOrder: DailyReport? {
+    guard let latestSettled = reports.first(where: { $0.isValued }) else {
+      return reports.first(where: { $0.isOrderPlan })
+    }
+    return reports.first(where: { $0.isOrderPlan && $0.date > latestSettled.date })
+  }
   var body: some View {
     Canvas {
       HStack {
@@ -35,6 +41,9 @@ struct DailyView: View {
       }
       if let report {
         datePicker(report)
+        if let upcomingOrder, upcomingOrder.id != report.id {
+          upcomingOrderButton(upcomingOrder)
+        }
         if report.isValued {
           assetCard(report)
         } else {
@@ -43,7 +52,10 @@ struct DailyView: View {
               report.statusTitle, systemImage: report.status == "closed" ? "moon.zzz" : "clock",
               description: Text(
                 report.status == "closed"
-                  ? "이 날은 시장이 쉬어갑니다." : "주문 정보를 먼저 확인할 수 있어요.\n정산이 끝나면 자산과 손익이 표시됩니다."))
+                  ? "이 날은 시장이 쉬어갑니다."
+                  : report.isOrderPlan
+                    ? "다음 거래일 주문 계획입니다.\n정산이 끝나면 자산과 손익이 표시됩니다."
+                    : "주문 정보를 먼저 확인할 수 있어요.\n정산이 끝나면 자산과 손익이 표시됩니다."))
           }
         }
         if !report.details.isEmpty {
@@ -150,8 +162,10 @@ struct DailyView: View {
         VStack(spacing: 3) {
           Text(ReportDate.label(report.date)).font(.subheadline.weight(.semibold))
           Text(
-            report.date == reports.first(where: { $0.isValued })?.date
-              ? "최근 정산일" : String(report.date.prefix(4))
+            !report.isValued && report.isOrderPlan
+              ? "주문 예정"
+              : report.date == reports.first(where: { $0.isValued })?.date
+                ? "최근 정산일" : String(report.date.prefix(4))
           ).font(.caption2).foregroundStyle(.secondary)
         }.padding(.vertical, 8)
       }.foregroundStyle(.primary)
@@ -163,6 +177,29 @@ struct DailyView: View {
       }.disabled(!canMove(1)).accessibilityLabel("다음 리포트")
     }
     .padding(.horizontal, 4).glassEffect(.regular, in: .capsule)
+  }
+  private func upcomingOrderButton(_ plan: DailyReport) -> some View {
+    Button {
+      selectedDate = plan.date
+    } label: {
+      HStack(spacing: 12) {
+        Image(systemName: "calendar.badge.clock")
+          .font(.title3).foregroundStyle(investment.tint).frame(width: 28)
+        VStack(alignment: .leading, spacing: 3) {
+          Text("다음 주문 보기").font(.subheadline.weight(.semibold))
+          Text(
+            "\(ReportDate.label(plan.date))"
+              + (plan.plannedOrderCount.map { " · \($0)건" } ?? "")
+          ).font(.caption).foregroundStyle(.secondary)
+        }
+        Spacer()
+        Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+      }
+      .padding(.horizontal, 18).padding(.vertical, 14)
+      .background(investment.tint.opacity(0.08), in: .rect(cornerRadius: 20))
+    }
+    .buttonStyle(.plain)
+    .accessibilityIdentifier("daily.upcomingOrder")
   }
   private func canMove(_ direction: Int) -> Bool {
     guard let report, let index = reports.firstIndex(where: { $0.id == report.id }) else {

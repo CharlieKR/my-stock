@@ -10,7 +10,20 @@ private func report(_ investment: Investment, _ date: String, assets: Double, pn
     id: "\(investment)-\(date)", investment: investment, date: date, currency: investment.currency,
     status: "settled", totalAssets: assets, stockValue: assets * 0.5, cash: assets * 0.5,
     cumulativePnl: pnl, cumulativeReturn: nil, dailyPnl: nil, dailyPnlLabel: "오늘 손익", details: [],
-    rawText: "", slackURL: "", threadTS: "", updatedAt: "", quality: nil)
+    rawText: "", slackURL: "", threadTS: "", updatedAt: "", quality: nil,
+    hasOrderPlan: nil, plannedOrderCount: nil)
+}
+@Test func futureOrderPlanHasASeparateStatusWithoutAssets() throws {
+  let json = """
+    {"id":"HYXL-2026-09-21","investment":"HYXL","date":"2026-09-21","currency":"KRW",\
+    "status":"pending","totalAssets":null,"stockValue":null,"cash":null,"cumulativePnl":null,\
+    "cumulativeReturn":null,"dailyPnl":null,"dailyPnlLabel":"오늘 손익","details":[],\
+    "rawText":"","slackURL":"","threadTS":"","updatedAt":"","hasOrderPlan":true,"plannedOrderCount":2}
+    """
+  let plan = try JSONDecoder().decode(DailyReport.self, from: Data(json.utf8))
+  #expect(plan.isOrderPlan)
+  #expect(plan.statusTitle == "주문 예정")
+  #expect(!plan.isValued)
 }
 private func envelope(_ reports: [DailyReport], rates: [FXRate] = []) -> ReportEnvelope {
   ReportEnvelope(

@@ -12,6 +12,17 @@ import Testing
   #expect(message.orderPreviews[0].quantity == "2,580")
   #expect(message.orderPreviews[1].amount == "₩11,244,960")
 }
+
+@Test func parsesDatabaseOrderPlans() {
+  let message = ThreadMessage(
+    id: "plan",
+    text: "주문 계획 · ls_main\n- 매수 KODEX 2,141주 @ ₩12,660 / ₩27,105,060 LOC\n제출 전 계획입니다.",
+    date: "2026-09-18T07:30:20Z")
+  #expect(message.orderPreviews.count == 1)
+  #expect(message.orderPreviews[0].side == "매수")
+  #expect(message.orderPreviews[0].name == "KODEX")
+  #expect(message.orderPreviews[0].amount == "₩27,105,060")
+}
 @Test func parsesStrategyHeadingsAndOrderTypes() {
   let message = ThreadMessage(
     id: "2",

@@ -65,6 +65,8 @@ extension DailyReport {
     threadTS=try c.decode(String.self,forKey:.threadTS);updatedAt=try c.decode(String.self,forKey:.updatedAt)
     messages=try c.decodeIfPresent([ThreadMessage].self,forKey:.messages)
     quality=try c.decodeIfPresent(String.self,forKey:.quality)
+    hasOrderPlan=try c.decodeIfPresent(Bool.self,forKey:.hasOrderPlan)
+    plannedOrderCount=try c.decodeIfPresent(Int.self,forKey:.plannedOrderCount)
   }
 }
 extension FXRate {

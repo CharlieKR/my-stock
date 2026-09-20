@@ -6,6 +6,18 @@ import { sourceDatabase, digest, readJSON } from './database.mjs';
 import { performanceWithPeriods, calculationVersion } from './performance.mjs';
 
 const sum=(rows,key)=>rows.some(r=>r[key]===null||r[key]===undefined)?null:rows.reduce((a,r)=>a.plus(r[key]),new Decimal(0)).toString();
+const number=value=>Number(value).toLocaleString('ko-KR',{maximumFractionDigits:2});
+function orderLine(order,currency){
+  const side=String(order.side??'').toUpperCase()==='BUY'?'매수':String(order.side??'').toUpperCase()==='SELL'?'매도':order.side??'';
+  const symbol=order.symbol??order.name??'SOXL';
+  const qty=Number(order.qty??order.quantity??0);
+  const price=order.limit_price??order.order_price??order.price;
+  if(price===null||price===undefined||!Number.isFinite(Number(price)))return `- ${side} ${symbol} ${number(qty)}주 · 가격 미정`;
+  const mark=currency==='KRW'?'₩':'$';
+  const amount=new Decimal(price).times(qty);
+  const type=order.order_type??order.trade_type??order.type??'';
+  return `- ${side} ${symbol} ${number(qty)}주 @ ${mark}${number(price)} / ${mark}${number(amount)}${type?` ${type}`:''}`;
+}
 export function normalizeBatches(batches,investment) {
   const ids=investment==='SOXL'?['soxl_live']:(process.env.MY_STOCK_HYXL_PORTFOLIOS??'kiwoom_main,ls_main').split(',');
   const scoped=batches.filter(b=>b.investment===investment&&ids.includes(b.portfolioId));
@@ -22,6 +34,8 @@ export function normalizeBatches(batches,investment) {
     const principal=complete?sum(present,'principal'):null;
     const capturedAt=day.map(b=>b.capturedAt).sort().at(-1);
     const details=day.flatMap(b=>b.details.map(d=>({...d,id:b.portfolioId+':'+b.stage+':'+d.id})));
+    const planBatches=day.filter(b=>b.stage==='plan');
+    const plannedOrderCount=planBatches.reduce((count,b)=>count+(b.orders?.length??0),0);
     const quality=complete&&present.every(b=>b.quality==='broker_reconciled')?'broker_reconciled':'incomplete';
     const valueDate=present.map(b=>b.capturedAt).sort().at(-1)??capturedAt;
     return {id:investment+'-'+date,investment,date,currency:investment==='SOXL'?'USD':'KRW',
@@ -32,13 +46,12 @@ export function normalizeBatches(batches,investment) {
       rawText:details.map(d=>d.title+'\n'+d.text).join('\n\n'),slackURL:'',threadTS:'',updatedAt:capturedAt,
       quality,availableDate:new Date(valueDate).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}),
       cashEvents,cashflowCoverageFrom:coverage,
+      hasOrderPlan:planBatches.length>0,plannedOrderCount,
       messages:day.flatMap(b=>[
         ...b.details.map(d=>({id:b.portfolioId+':'+b.stage+':'+d.id,text:d.title+'\n'+d.text,date:b.capturedAt})),
         ...(b.orders?.length?[{id:b.portfolioId+':'+b.stage+':orders',date:b.capturedAt,
-          text:(b.stage==='plan'?'주문 계획':'주문 기록')+' · '+b.portfolioId+'\n'+b.orders.map(o=>[
-            o.symbol??o.name??'SOXL',o.side,`${o.qty??o.quantity??0}주`,o.limit_price??o.order_price??o.price??'가격 미정',o.status??'계획',
-            o.filled_qty!==undefined?`체결 ${o.filled_qty}주`:'제출 상태와 실제 체결은 다를 수 있습니다.'
-          ].join(' · ')).join('\n')}]:[]),
+          text:(b.stage==='plan'?'주문 계획':'주문 기록')+' · '+b.portfolioId+'\n'+b.orders.map(o=>orderLine(o,b.currency)).join('\n')
+            +'\n'+(b.stage==='plan'?'제출 전 계획이며 실제 체결과 다를 수 있습니다.':'체결 상태는 주문별 기록을 확인해 주세요.')}]:[]),
         ...(b.evidence?.fills?.length?[{id:b.portfolioId+':'+b.stage+':fills',date:b.capturedAt,
           text:'체결 결과 · '+b.portfolioId+'\n'+b.evidence.fills.flatMap(f=>{
             if(Array.isArray(f)) {
@@ -59,13 +72,21 @@ async function buildV2(){
   const archive=await readJSON(join(dataDir,'legacy-reports.json'),{reports:[],fxRates:[]});
   const saved=await readJSON(join(dataDir,'source-cache-v2.json'),{});
   const states=await Promise.all(['SOXL','HYXL'].map(async investment=>{
-    try {return await sourceDatabase(investment);}
+    try {
+      const source=await sourceDatabase(investment);
+      if(source.status==='unconfigured'&&saved[investment]?.batches?.length)return {...saved[investment],investment,status:'cached',message:'DB 연결 전 · 마지막으로 저장된 주문과 정산 기록을 표시합니다.'};
+      return source;
+    }
     catch {return {...saved[investment],investment,status:'error',message:'DB 동기화 실패 · 마지막 기록을 표시합니다.',batches:saved[investment]?.batches??[],rates:saved[investment]?.rates??[]};}
   }));
   for(const s of states) if(s.status==='ready')saved[s.investment]=s;
   await persist(join(dataDir,'source-cache-v2.json'),saved);
-  const legacy=archive.reports.map(r=>({...r,quality:'legacy_archive',cashEvents:[],cashflowCoverageFrom:null,
-    availableDate:r.date,slackURL:'',threadTS:'',details:[...r.details,{id:'archive',title:'보관 기록',text:'이전 리포트에서 보존한 과거 기록입니다.'}],messages:[]}));
+  const legacy=archive.reports.map(r=>{
+    const hasOrderPlan=r.hasOrderPlan??(r.status==='pending'&&(r.messages?.some(m=>/주문표|주문 계획/.test(m.text))||r.details.some(d=>/주문표|주문금액/.test(d.title+' '+d.text))));
+    return {...r,quality:'legacy_archive',cashEvents:[],cashflowCoverageFrom:null,hasOrderPlan:Boolean(hasOrderPlan),
+      plannedOrderCount:r.plannedOrderCount??null,availableDate:r.date,slackURL:'',threadTS:'',
+      details:[...r.details,{id:'archive',title:'보관 기록',text:'이전 리포트에서 보존한 과거 기록입니다.'}],messages:r.messages??[]};
+  });
   const map=new Map(legacy.map(r=>[r.id,r]));
   for(const s of states)for(const r of normalizeBatches(s.batches,s.investment))map.set(r.id,r);
   const reports=[...map.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));

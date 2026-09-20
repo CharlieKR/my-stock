@@ -14,7 +14,7 @@ struct DailyReport: Codable, Identifiable, Sendable {
   enum CodingKeys: String, CodingKey {
     case id, investment, date, currency, status, totalAssets, stockValue, cash, cumulativePnl
     case cumulativeReturn, dailyPnl, dailyPnlLabel, details, rawText, slackURL, threadTS, updatedAt
-    case messages, quality
+    case messages, quality, hasOrderPlan, plannedOrderCount
   }
   var messages: [ThreadMessage]? = nil
   let id: String
@@ -35,9 +35,18 @@ struct DailyReport: Codable, Identifiable, Sendable {
   let threadTS: String
   let updatedAt: String
   let quality: String?
+  let hasOrderPlan: Bool?
+  let plannedOrderCount: Int?
   var day: Date { ReportDate.parse(date) }
   var isValued: Bool { status == "settled" && totalAssets != nil }
-  var statusTitle: String { status == "closed" ? "휴장" : status == "settled" ? "정산 완료" : "정산 대기" }
+  var isOrderPlan: Bool {
+    hasOrderPlan == true
+      || messages?.contains(where: { $0.title.contains("주문") }) == true
+      || details.contains(where: { $0.title.contains("주문") || $0.text.contains("주문금액") })
+  }
+  var statusTitle: String {
+    status == "closed" ? "휴장" : status == "settled" ? "정산 완료" : isOrderPlan ? "주문 예정" : "정산 대기"
+  }
   var hasLegacySettlementSource: Bool {
     quality == "legacy_archive" || (quality == nil && !slackURL.isEmpty)
   }
@@ -93,7 +102,7 @@ struct ThreadMessage: Codable, Identifiable, Sendable {
       .trimmingCharacters(in: .whitespacesAndNewlines)
   }
   var symbol: String {
-    if title.contains("주문표") { return "list.bullet.rectangle" }
+    if title.contains("주문") { return "list.bullet.rectangle" }
     if title.contains("실행") { return "paperplane" }
     if title.contains("결과") { return "checklist" }
     if title.contains("비교") { return "chart.xyaxis.line" }
