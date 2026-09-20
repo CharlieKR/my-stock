@@ -1,5 +1,7 @@
 import pg from 'pg';
 import { readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
+import { rootCertificates } from 'node:tls';
 import { createHash } from 'node:crypto';
 const pools = new Map();
 export function databasePool(connectionString) {
@@ -8,7 +10,8 @@ export function databasePool(connectionString) {
     // Do not let connection-string SSL options silently disable certificate verification.
     for (const key of ['sslmode','sslcert','sslkey','sslrootcert']) url.searchParams.delete(key);
     pools.set(connectionString,new pg.Pool({connectionString:url.href,max:2,connectionTimeoutMillis:5000,
-      idleTimeoutMillis:10000,statement_timeout:10000,ssl:{rejectUnauthorized:true}}));
+      idleTimeoutMillis:10000,statement_timeout:10000,allowExitOnIdle:true,
+      ssl:{rejectUnauthorized:true,ca:[...rootCertificates,readFileSync(new URL('./certs/supabase-prod-ca-2021.crt',import.meta.url),'utf8')]}}));
   }
   return pools.get(connectionString);
 }
@@ -25,8 +28,9 @@ export async function sourceDatabase(investment) {
       from reporting.publication_batches where investment=$1
       order by portfolio_id,business_date,stage,captured_at desc,revision desc`,[investment]);
     const rates=investment==='SOXL'?await client.query('select rate_date::text as date,usd_krw::text as "usdKrw",available_at as "availableAt",provider from reporting.fx_rates order by rate_date'): {rows:[]};
+    const archive=await client.query('select payload from reporting.legacy_reports where investment=$1 order by business_date',[investment]);
     await client.query('commit');
-    return {investment,status:'ready',message:'Supabase 정산 기록',batches:result.rows.map(r=>({...r.payload,revision:r.revision})),rates:rates.rows};
+    return {investment,status:'ready',message:'Supabase 정산 기록',batches:result.rows.map(r=>({...r.payload,revision:r.revision})),rates:rates.rows,archive:archive.rows.map(r=>r.payload)};
   } catch { await client.query('rollback').catch(()=>{}); throw new Error(investment+' DB 조회 실패'); }
   finally {client.release();}
 }

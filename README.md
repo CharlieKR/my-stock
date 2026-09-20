@@ -4,6 +4,8 @@ SOXL(lst) · HYXL(하이닉스, kst)의 주문·정산과 월별 성과를 보�
 
 운영 DB/서버 반영은 [프로젝트별 적용 가이드와 프롬프트](docs/PROJECT_INTEGRATION_GUIDE.md)를 따릅니다. 로컬 구현과 운영 반영은 구분합니다.
 
+2026-09-20 운영 반영: 개인 iPhone → `https://my-stock-blue.vercel.app` → 기존 두 Supabase DB로 연결됩니다. [배포·실데이터 검증 기록](docs/PRODUCTION_RELEASE.md)에 이관 범위, 소스 작업, 검증 결과와 롤백 방법을 정리했습니다. 개인 기기 재설치는 `scripts/install-iphone.sh`를 사용합니다.
+
 ## 화면
 
 - **SOXL / HYXL**: Apple 기본 캘린더, 미지원 날짜 토스트, 자산·누적/일별 손익·현금 비중, 주문 계획·주문 상태·체결·정산 근거. 날짜에 기록이 없으면 기존 리포트를 유지합니다.
@@ -23,7 +25,7 @@ node gateway/server.mjs
 node --env-file=/private/path/reader.env gateway/server.mjs
 ~~~
 
-기본 서버 주소는 http://127.0.0.1:8787입니다. 실기기는 개인 HTTPS 주소가 필요합니다. 연결 키는 Keychain에 저장하며 DB·증권사 비밀 키는 앱에 포함하지 않습니다.
+개발 서버 주소는 http://127.0.0.1:8787이고 운영 주소는 https://my-stock-blue.vercel.app입니다. 연결 키는 Keychain에 저장하며 DB·증권사 비밀 키는 앱에 포함하지 않습니다.
 
 배포용 앱의 API 주소는 Xcode 빌드 설정 MY_STOCK_API_URL에 HTTPS 주소를 지정해 고정합니다. 주소는 비밀이 아니며 Info.plist의 MyStockAPIURL로 전달됩니다. 기기의 읽기 키는 설치/초기 설정 때 Keychain에 준비해야 합니다. 이미 설치된 개인용 앱은 기존 Keychain 키를 유지합니다. 새 기기의 초기 키 설정은 배포 준비 항목이며 키를 없애거나 비인증 DB 조회로 대체하지 않습니다. 운영 API 배포 전에는 개발용 로컬 서버를 계속 사용합니다.
 

@@ -134,7 +134,9 @@ struct ThreadMessage: Codable, Identifiable, Sendable {
     return "생성 완료"
   }
   var timeLabel: String {
-    guard let instant = ISO8601DateFormatter().date(from: date) else { return "" }
+    let parser = ISO8601DateFormatter()
+    parser.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let instant = parser.date(from: date) ?? ISO8601DateFormatter().date(from: date) else { return "" }
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "ko_KR")
     formatter.timeZone = TimeZone(identifier: "Asia/Seoul")

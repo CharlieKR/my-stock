@@ -1,0 +1,8 @@
+{
+  "name": "my-stock",
+  "private": true,
+  "type": "module",
+  "workspaces": ["gateway"],
+  "engines": {"node": "22.x"},
+  "scripts": {"test": "npm --prefix gateway test"}
+}

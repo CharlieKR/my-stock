@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { calculatePerformance, performanceWithPeriods, periodStart } from '../performance.mjs';
-import { normalizeBatches } from '../reports-v2.mjs';
+import { normalizeBatches, mergeDailyReport } from '../reports-v2.mjs';
 
 const report=(date,nav,extra={})=>({id:'SOXL-'+date,investment:'SOXL',date,currency:'USD',status:'settled',totalAssets:String(nav),quality:'broker_reconciled',cashEvents:[],cashflowCoverageFrom:'2026-01-01',...extra});
 const when=new Date('2026-04-01T12:00:00Z');
@@ -114,11 +114,50 @@ test('plan, submission and fills are presented once in chronological order witho
   assert.doesNotMatch(messages.map(m=>m.text).join('\n'),/kiwoom_main|동파|Tide/);
   assert.match(messages[1].text,/제출 완료/);assert.match(messages[2].text,/체결 완료/);
 });
+test('settled SENT orders are unfilled; partial fills show only the remaining quantity',()=>{
+  const source=batch({orders:[{id:'a',symbol:'0193T0.KS',side:'BUY',qty:10,limit_price:100,status:'SENT',filled_qty:4}],
+    evidence:{fills:[{order_id:'a',symbol:'0193T0.KS',qty:4,price:99}]}});
+  const text=normalizeBatches([source],'HYXL')[0].messages[0].text;
+  assert.match(text,/KODEX 4주 @ ₩99 \/ ₩396 체결 완료/);
+  assert.match(text,/KODEX 6주 @ ₩100 \/ ₩600 미체결/);
+  assert.doesNotMatch(text,/제출 완료/);
+});
+test('SOXL matched fill evidence avoids duplicating full fills as unfilled',()=>{
+  const source=batch({investment:'SOXL',portfolioId:'soxl_live',currency:'USD',orders:[
+    {id:'a',symbol:'SOXL',side:'sell',qty:10,order_price:100,status:'filled',trade_type:'main'}],
+    evidence:{fills:[['a',{matchedQty:10,matchedAmount:1010}]]}});
+  const text=normalizeBatches([source],'SOXL')[0].messages[0].text;
+  assert.match(text,/10주 @ \$101 \/ \$1,010 체결 완료/);
+  assert.doesNotMatch(text,/미체결|main/);
+});
+test('execution updates preserve historical settlement and its independent fill result',()=>{
+  const prior={...archived('2026-09-18',100,10),messages:[
+    {id:'p',text:'주문표 생성',date:'2026-09-18T01:00:00Z'},
+    {id:'f',text:'체결 결과',date:'2026-09-18T07:00:00Z'}]};
+  const current={...prior,status:'pending',totalAssets:null,messages:[
+    {id:'s',text:'주문 제출',date:'2026-09-18T06:00:00Z'}]};
+  const merged=mergeDailyReport(prior,current);
+  assert.equal(merged.totalAssets,'100');assert.equal(merged.status,'settled');
+  assert.deepEqual(merged.messages.map(m=>m.id),['p','s','f']);
+});
+test('DB observations matching archived NAV and cumulative P&L retain estimated history only',()=>{
+  const prior=archived('2026-03-31',120,20);
+  const current={...prior,quality:'broker_reconciled',cashflowCoverageFrom:null};
+  const same=mergeDailyReport(prior,current);
+  assert.equal(same.quality,'broker_reconciled');
+  assert.equal(same.performanceBasis,'archived_cumulative');
+  const result=calculatePerformance([archived('2026-03-01',100,0),same],[],'SOXL',when);
+  assert.equal(result.summary.profit,'20.00000000');
+  assert.equal(result.summary.estimated,true);
+  assert.equal(mergeDailyReport(prior,{...current,totalAssets:'130'}).performanceBasis,undefined);
+  assert.equal(mergeDailyReport(undefined,current).performanceBasis,undefined);
+});
 test('migration grants only reporting reads; retry/correction revisions preserve history',async()=>{
   const db=new PGlite();
   try{
     await db.exec('create role anon; create role authenticated; create role service_role; create table public.orders(id int);');
     await db.exec(await readFile(new URL('../../integrations/reporting.sql',import.meta.url),'utf8'));
+    await db.exec(await readFile(new URL('../../integrations/20260920130000_add_legacy_reports.sql',import.meta.url),'utf8'));
     await db.exec('set role service_role');
     const publish=async b=>(await db.query('select public.my_stock_publish($1::jsonb) as revision',[JSON.stringify(b)])).rows[0].revision;
     const a=await publish(batch());assert.equal(await publish(batch()),a);

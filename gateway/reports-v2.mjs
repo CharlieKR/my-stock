@@ -7,15 +7,27 @@ import { performanceWithPeriods, calculationVersion } from './performance.mjs';
 
 const sum=(rows,key)=>rows.some(r=>r[key]===null||r[key]===undefined)?null:rows.reduce((a,r)=>a.plus(r[key]),new Decimal(0)).toString();
 const number=value=>Number(value).toLocaleString('ko-KR',{maximumFractionDigits:2});
+function groupedOrderLines(orders,suffix){
+  const groups=new Map();
+  for(const order of orders){
+    const note=typeof suffix==='function'?suffix(order):suffix;
+    const key=JSON.stringify([order.symbol,order.side,order.limit_price??order.order_price??order.price,order.order_type??order.type,order.currency,note]);
+    const current=groups.get(key);
+    if(current)current.order.qty+=Number(order.qty??order.quantity??0);
+    else groups.set(key,{order:{...order,qty:Number(order.qty??order.quantity??0)},note});
+  }
+  return [...groups.values()].map(({order,note})=>orderLine(order,order.currency,note));
+}
 function orderLine(order,currency,suffix=''){
   const side=String(order.side??'').toUpperCase()==='BUY'?'매수':String(order.side??'').toUpperCase()==='SELL'?'매도':order.side??'';
-  const symbol=order.symbol??order.name??'SOXL';
+  const rawSymbol=order.symbol??order.name??'SOXL';
+  const symbol=({'0193T0':'KODEX','0194T0':'ACE'})[rawSymbol.replace(/\.KS$/u,'')]??rawSymbol;
   const qty=Number(order.qty??order.quantity??0);
   const price=order.limit_price??order.order_price??order.price;
   if(price===null||price===undefined||!Number.isFinite(Number(price)))return `- ${side} ${symbol} ${number(qty)}주 · 가격 미정`;
   const mark=currency==='KRW'?'₩':'$';
   const amount=new Decimal(price).times(qty);
-  const type=order.order_type??order.trade_type??order.type??'';
+  const type=order.order_type??order.type??'';
   const note=[type,suffix].filter(Boolean).join(' · ');
   return `- ${side} ${symbol} ${number(qty)}주 @ ${mark}${number(price)} / ${mark}${number(amount)}${note?` ${note}`:''}`;
 }
@@ -35,10 +47,10 @@ function timelineMessages(day){
     const date=batches.map(b=>b.capturedAt).sort().at(-1);
     const orders=batches.flatMap(b=>(b.orders??[]).map(o=>({...o,currency:b.currency})));
     if(stage==='plan'&&orders.length){
-      messages.push({id:'plan-orders',date,text:'주문표 생성\n'+orders.map(o=>orderLine(o,o.currency,'예정')).join('\n')});
+      messages.push({id:'plan-orders',date,text:'주문표 생성\n'+groupedOrderLines(orders,'예정').join('\n')});
     }
     if(stage==='execution'&&orders.length){
-      messages.push({id:'execution-orders',date,text:'주문 제출\n'+orders.map(o=>orderLine(o,o.currency,statusLabel(o.status)||'제출')).join('\n')});
+      messages.push({id:'execution-orders',date,text:'주문 제출\n'+groupedOrderLines(orders,o=>statusLabel(o.status)||'제출').join('\n')});
     }
     if(stage==='settled'){
       const fills=batches.flatMap(b=>(b.evidence?.fills??[]).map(f=>({fill:f,batch:b})));
@@ -50,13 +62,46 @@ function timelineMessages(day){
         const order=batch.orders?.find(o=>String(o.id)===String(fill.order_id));
         return [orderLine({...fill,side:order?.side,symbol:fill.symbol??order?.symbol,order_type:order?.order_type,limit_price:fill.price},batch.currency,'체결 완료')];
       });
-      const unfilled=orders.filter(o=>Number(o.filled_qty??0)<Number(o.qty??o.quantity??0));
+      const matched=new Map();
+      for(const {fill} of fills){
+        const id=String(Array.isArray(fill)?fill[0]:fill.order_id);
+        const qty=Number(Array.isArray(fill)?fill[1].matchedQty:fill.qty);
+        matched.set(id,(matched.get(id)??0)+qty);
+      }
+      const unfilled=orders.flatMap(o=>{
+        const filled=matched.get(String(o.id))??Number(o.filled_qty??0);
+        const remaining=Number(o.qty??o.quantity??0)-filled;
+        return remaining>0?[{...o,qty:remaining}]:[];
+      });
       const sections=[fillLines.length?fillLines.join('\n'):'체결 없음'];
-      if(unfilled.length)sections.push('미체결/거부\n'+unfilled.map(o=>orderLine(o,o.currency,statusLabel(o.status)||'미체결')).join('\n'));
+      if(unfilled.length)sections.push('미체결/거부\n'+groupedOrderLines(unfilled,o=>{
+        const status=String(o.status??'').toUpperCase();
+        return ['REJECTED','FAILED'].includes(status)?'거부':
+          ['CANCELED','CANCELLED'].includes(status)?'취소':'미체결';
+      }).join('\n'));
       messages.push({id:'settled-fills',date,text:'체결 결과\n'+sections.join('\n\n')});
     }
   }
   return messages.sort((a,b)=>a.date.localeCompare(b.date));
+}
+
+export function mergeDailyReport(archived,current){
+  if(!archived)return current;
+  const stage=message=>/체결|결과/u.test(message.text.split('\n')[0])?'settled':
+    /제출|실행/u.test(message.text.split('\n')[0])?'execution':'plan';
+  const messages=new Map((archived.messages??[]).map(m=>[stage(m),m]));
+  for(const m of current.messages??[])messages.set(stage(m),m);
+  const combined=[...messages.values()].sort((a,b)=>a.date.localeCompare(b.date));
+  // An execution-only observation must not erase a previously settled NAV.
+  if(current.status!=='settled'&&archived.status==='settled'){
+    return {...archived,messages:combined,updatedAt:current.updatedAt,
+      hasOrderPlan:current.hasOrderPlan||archived.hasOrderPlan,
+      plannedOrderCount:current.plannedOrderCount||archived.plannedOrderCount};
+  }
+  const verifiedArchive=archived.quality==='legacy_archive'&&
+    ['totalAssets','cumulativePnl'].every(key=>archived[key]!=null&&current[key]!=null&&new Decimal(archived[key]).eq(current[key]));
+  return {...current,messages:combined,
+    ...(verifiedArchive?{performanceBasis:'archived_cumulative'}:{})};
 }
 export function normalizeBatches(batches,investment) {
   const ids=investment==='SOXL'?['soxl_live']:(process.env.MY_STOCK_HYXL_PORTFOLIOS??'kiwoom_main,ls_main').split(',');
@@ -75,8 +120,9 @@ export function normalizeBatches(batches,investment) {
     const capturedAt=day.map(b=>b.capturedAt).sort().at(-1);
     const sourceDetails=day.filter(b=>b.stage==='settled').flatMap(b=>b.details.map(d=>({...d,id:b.portfolioId+':'+b.stage+':'+d.id})));
     const settledFills=present.flatMap(b=>b.evidence?.fills??[]);
-    const details=sourceDetails.length||!complete?sourceDetails:[{id:investment+':settled:fills',title:'체결',
-      text:settledFills.length?`${settledFills.length}건 체결`:'없음'}];
+    const details=[...sourceDetails];
+    if(complete&&!details.some(d=>d.title==='체결'))details.push({id:investment+':settled:fills',title:'체결',
+      text:settledFills.length?`${settledFills.length}건 체결`:'없음'});
     const planBatches=day.filter(b=>b.stage==='plan');
     const plannedOrderCount=planBatches.reduce((count,b)=>count+(b.orders?.length??0),0);
     const quality=complete&&present.every(b=>b.quality==='broker_reconciled')?'broker_reconciled':'incomplete';
@@ -111,14 +157,16 @@ async function buildV2(){
   }));
   for(const s of states) if(s.status==='ready')saved[s.investment]=s;
   await persist(join(dataDir,'source-cache-v2.json'),saved);
-  const legacy=archive.reports.map(r=>{
+  const historical=new Map(archive.reports.map(r=>[r.id,r]));
+  for(const s of states)for(const r of s.archive??[])historical.set(r.id,r);
+  const legacy=[...historical.values()].map(r=>{
     const hasOrderPlan=r.hasOrderPlan??(r.status==='pending'&&(r.messages?.some(m=>/주문표|주문 계획/.test(m.text))||r.details.some(d=>/주문표|주문금액/.test(d.title+' '+d.text))));
     return {...r,quality:'legacy_archive',cashEvents:[],cashflowCoverageFrom:null,hasOrderPlan:Boolean(hasOrderPlan),
       plannedOrderCount:r.plannedOrderCount??null,availableDate:r.date,slackURL:'',threadTS:'',
       details:[...r.details,{id:'archive',title:'보관 기록',text:'이전 리포트에서 보존한 과거 기록입니다.'}],messages:r.messages??[]};
   });
   const map=new Map(legacy.map(r=>[r.id,r]));
-  for(const s of states)for(const r of normalizeBatches(s.batches,s.investment))map.set(r.id,r);
+  for(const s of states)for(const r of normalizeBatches(s.batches,s.investment))map.set(r.id,mergeDailyReport(map.get(r.id),r));
   const reports=[...map.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
   const rates=new Map((archive.fxRates??[]).map(r=>[r.date,r]));
   for(const s of states)for(const r of s.rates)rates.set(r.date,r);

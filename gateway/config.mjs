@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { randomBytes } from 'node:crypto';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-export const dataDir = resolve(process.env.MY_STOCK_DATA_DIR ?? `${root}/.local`);
+export const dataDir = resolve(process.env.MY_STOCK_DATA_DIR ?? (process.env.VERCEL ? '/tmp/my-stock' : `${root}/.local`));
 mkdirSync(dataDir, { recursive: true, mode: 0o700 });
 
 function selectedValues(paths) {
@@ -30,6 +30,7 @@ export function sourceConfig(investment) {
 
 export function readerToken() {
   if (process.env.MY_STOCK_READER_TOKEN) return process.env.MY_STOCK_READER_TOKEN;
+  if(process.env.VERCEL)throw new Error('MY_STOCK_READER_TOKEN is required for deployment');
   const path = resolve(dataDir, 'reader-token');
   if (!existsSync(path)) writeFileSync(path, randomBytes(32).toString('hex'), { mode: 0o600 });
   return readFileSync(path, 'utf8').trim();

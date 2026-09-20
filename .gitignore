@@ -4,6 +4,7 @@
 build/
 build-device/
 .local/
+.vercel/
 DerivedData/
 *.xcresult
 *.xcuserstate

@@ -1,0 +1,16 @@
+.git
+.local
+.build
+build
+build-device
+DerivedData
+MyStock
+MyStockTests
+MyStockUITests
+MyStock.xcodeproj
+gateway/test
+gateway/node_modules
+docs
+integrations
+scripts
+*.xcresult

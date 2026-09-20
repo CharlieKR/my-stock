@@ -1,6 +1,6 @@
 # kst / lst 적용 가이드와 후속 프롬프트
 
-2026-09-20. 로컬 코드·마이그레이션 구현 및 회귀 검증 완료. **운영 Supabase 마이그레이션, 운영 서버 배포, cron/Slack 전송 설정 변경은 아직 적용하지 않았다.** 로컬 앱/읽기 서버는 v2로 전환했고, 현재 DB 연결 정보가 없으므로 보존한 과거 리포트 187개를 명시적으로 표시한다.
+아래는 초기 연동 설계와 프로젝트별 적용 절차다. 2026-09-20 실제 운영 반영 상태는 [운영 배포 기록](PRODUCTION_RELEASE.md)을 따른다. 두 Supabase 마이그레이션, Vercel API, 보고서 전용 동기화 작업과 개인 iPhone 설치를 반영했다. Slack 전송은 유지하고 있으며 다음 정상 시장 주기의 자동 발행 관측은 남아 있다.
 
 ## 구현 범위
 
@@ -48,7 +48,7 @@ DB 장애 후 outbox/입력 파일이 비워지는지 확인한다. 미완료 �
 
 ### 3. 읽기 API와 환율 작업
 
-My Stock `gateway/.env.example`을 기준으로 실제 환경파일을 별도 보관하고 `node --env-file=/private/path/reader.env gateway/server.mjs`로 실행한다. 기존 서버의 여유 자원 확인 후 별도 서비스 프로세스와 HTTPS 역방향 프록시를 사용한다. 두 DB URL은 reader 계정이어야 하며 인증서 검증은 켜져 있다. 풀러 주소/계정 형식은 해당 Supabase 연결 화면의 설정을 따른다.
+운영 API는 별도 Vercel `my-stock` 프로젝트의 `https://my-stock-blue.vercel.app`에 배포했다. `vercel.json`과 루트 workspace 설정을 사용한다. 필수 환경변수는 `MY_STOCK_LST_DATABASE_URL`, `MY_STOCK_KST_DATABASE_URL`, `MY_STOCK_READER_TOKEN`이다. 두 DB URL은 reader 계정이며 인증서 검증은 켜져 있다. 로컬 점검은 `gateway/.env.example`을 참고해 `node --env-file=/private/path/reader.env gateway/server.mjs`로 실행한다.
 
 환율 작업은 별도 비밀 환경파일의 `MY_STOCK_FX_DATABASE_URL`로 `node --env-file=/private/path/fx.env gateway/sync-fx.mjs`를 매일 실행한다. 기본은 최근 10일, 날짜 인자를 주면 해당 날짜부터 가져온다. 환율 쓰기 자격을 읽기 API 프로세스에 제공하지 않는다.
 
@@ -70,20 +70,22 @@ My Stock `gateway/.env.example`을 기준으로 실제 환경파일을 별도 �
 
 로컬에서 kst 기존 테스트 100개, 새 발행 재시도 테스트, lst `lint`·`test:ops`·`test:dongpa`·새 발행 테스트가 통과했다. My Stock은 Node 테스트(SQL 권한, 중복/정정, 성과, ETag 포함), Swift 모델 테스트, iOS 빌드와 캘린더/리포트/설정 UI 테스트가 통과했다. 내부 시뮬레이터에서 미지원 날짜 토스트도 직접 확인했다.
 
-이 결과는 기존 동작에 대한 회귀 검사이며 실거래 운영 무중단을 보증하는 결과는 아니다. 이번 작업에서는 실제 주문 실행·잔고 대사 재실행·운영 DB 쓰기를 수행하지 않았다. 운영 DB 연결·예약 발행·백업 복구·실제 원장 완전성은 위 순서에서 확인해야 한다.
+이 결과는 기존 동작에 대한 회귀 검사이며 다음 실거래 주기의 동작까지 확인한 결과는 아니다. 2026-09-20에는 운영 DB에 보고서 스키마와 과거 관측을 저장하고, 보고서 전용 작업·Vercel API·iPhone 설치를 반영했다. 실제 주문 실행이나 잔고 대사 작업을 수동 재실행하지 않았다. 다음 정상 주문/정산 주기의 발행 관측과 실제 입출금 원장 완전성 확인은 남아 있다. 상세 적용 범위는 [운영 배포 기록](PRODUCTION_RELEASE.md)을 따른다.
 
 과거 계좌 간 동일 날짜 출금/입금은 합산 범위에서 순액이 상계된다. 서로 다른 날짜/통화에 걸친 이체는 명시적인 연결과 이동 중 자산 기록이 필요하다. 현재 자동으로 금액·날짜를 보고 이체라고 확정하지 않는다. 미확인 구간은 cashflow coverage를 넓히지 않는다. 시장별 장기 휴장은 현재 최대 7일 이월 한도를 사용하며 해당 한도 밖 종합값은 생성하지 않는다. 과거 환율을 뒤늦게 수집한 평가에는 추정 표시를 붙인다.
 
 ## kst 작업에 붙여 넣을 프롬프트
 
 ```text
-<workspace>/kst에 추가된 My Stock 리포트 연동을 검토하고 운영 반영을 준비해줘.
+<workspace>/kst의 My Stock 리포트 연동을 검토하고 이미 운영 반영된 변경을 저장소에 정리해줘.
 
-먼저 <workspace>/my-stock/docs/PROJECT_INTEGRATION_GUIDE.md와 현재 git status/diff를 읽어줘.
+먼저 <workspace>/my-stock/docs/PRODUCTION_RELEASE.md, PROJECT_INTEGRATION_GUIDE.md와 현재 git status/diff를 읽어줘.
 새로 추가된 untracked 파일도 포함해서 검토해줘.
 이미 구현된 코드를 다시 작성하지 말고, myStockAdapter.ts / myStockReporting.ts / myStockSync.ts,
 rebalanceStart.ts / rebalanceSettle.ts / slack.ts 변경과
-20260920120000_add_my_stock_reporting.sql을 검토해줘.
+20260920120000_add_my_stock_reporting.sql, 20260920130000_add_legacy_reports.sql을 검토해줘.
+운영에는 보고서 전용 세 파일과 cron만 배포됐고 기존 runner 시작/정산 파일은 교체하지 않았어.
+이미 적용된 마이그레이션을 다시 실행하지 말고 다른 작업의 변경과 구분해줘.
 
 매매 판단, 주문 수량·가격·유형, 정산/대사, 기존 cron을 유지해야 해.
 MY_STOCK_REPORTING_ENABLED의 기본 off와 저장 실패 시 매매 결과 불변을 확인하고
@@ -99,12 +101,14 @@ reader 전용 연결, persistent outbox, 읽기 전용 sync 스케줄, 원장 �
 ## lst 작업에 붙여 넣을 프롬프트
 
 ```text
-<workspace>/lst에 추가된 My Stock 리포트 연동을 검토하고 운영 반영을 준비해줘.
+<workspace>/lst의 My Stock 리포트 연동을 검토하고 이미 운영 반영된 변경을 저장소에 정리해줘.
 
-AGENTS.md와 <workspace>/my-stock/docs/PROJECT_INTEGRATION_GUIDE.md,
+AGENTS.md와 <workspace>/my-stock/docs/PRODUCTION_RELEASE.md, PROJECT_INTEGRATION_GUIDE.md,
 현재 git status/diff와 untracked 파일을 먼저 읽어줘. 구현된 myStockAdapter.ts / myStockReporting.ts / myStockSync.ts,
 preValidateOrders.ts / dailyReport.ts / slack.ts 변경과
-20260920120000_add_my_stock_reporting.sql을 기준으로 작업해줘.
+20260920120000_add_my_stock_reporting.sql, 20260920130000_add_legacy_reports.sql을 기준으로 작업해줘.
+운영에는 보고서 전용 세 파일, preValidateOrders/dailyReport 발행 연결과 cron이 반영됐어.
+이미 적용된 마이그레이션을 다시 실행하지 말고 다른 작업의 변경과 구분해줘.
 
 dailyReport의 DB-broker reconciliation, LOC 정산, RP 수익, 종가 저장을 유지해줘.
 Slack 전송만 독립적으로 끌 수 있어야 하며 매매 로직과 주문 스케줄은 바꾸지 마.

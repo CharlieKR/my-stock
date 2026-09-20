@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { pathToFileURL } from 'node:url';
 import { timingSafeEqual } from 'node:crypto';
 import { readerToken, sourceConfig } from './config.mjs';
 import { readCache, syncReports, slackRead } from './sync.mjs';
@@ -17,7 +18,7 @@ function send(res, code, data) {
   res.end(JSON.stringify(data));
 }
 
-const server = http.createServer(async (req,res) => {
+export async function handleRequest(req,res) {
   if (!authorized(req)) return send(res, 401, { error: '읽기 전용 연결 키를 확인해 주세요.' });
   if (req.method !== 'GET') return send(res, 405, { error: 'Read only' });
   const url = new URL(req.url, 'http://localhost');
@@ -74,8 +75,11 @@ const server = http.createServer(async (req,res) => {
     }
     return send(res, 404, { error: 'Not found' });
   } catch (e) { return send(res, 502, { error: e.message ?? '데이터를 가져오지 못했습니다.' }); }
-});
+}
 
 const port = Number(process.env.PORT ?? 8787);
 const host = process.env.HOST ?? '127.0.0.1';
-server.listen(port, host, () => console.log(`My Stock reader listening on ${host}:${server.address().port}. Connection key is in .local/reader-token.`));
+if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
+  const server=http.createServer(handleRequest);
+  server.listen(port, host, () => console.log(`My Stock reader listening on ${host}:${server.address().port}.`));
+}

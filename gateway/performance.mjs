@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 Decimal.set({precision:32});
-export const calculationVersion='nav-ledger-dietz-2.2-history';
+export const calculationVersion='nav-ledger-dietz-2.3-verified-history';
 const D=v=>new Decimal(v);
 const days=(a,b)=>(Date.parse(b)-Date.parse(a))/86400000;
 const text=v=>v===null?null:D(v).toFixed(8);
@@ -106,10 +106,10 @@ export function calculatePerformance(reports,rates,scope,now=new Date(),range={}
     const denominator=D(start.assets).plus(weighted);
     let pct=profit!==null&&denominator.gt(0)?profit.div(denominator).times(100):null;
     let inferred=null;
-    // Only the frozen historical archive uses inferred capital. Unverified DB
-    // publications still require the ledger, including explicit transfer pairs.
+    // Keep historical estimates when DB NAV/P&L exactly match the frozen archive.
+    // New or corrected DB observations still require verified ledger coverage.
     const span=points.filter(p=>p.date>=start.date&&p.date<=end.date);
-    if(!valid&&span.every(p=>p.parts.every(r=>r.quality==='legacy_archive'))) {
+    if(!valid&&span.every(p=>p.parts.every(r=>r.quality==='legacy_archive'||r.performanceBasis==='archived_cumulative'))) {
       inferred=inferHistoricalPerformance(span,scope);
       if(inferred){start=inferred.start;profit=inferred.profit;pct=inferred.returnPercent;net=inferred.net;}
     }
