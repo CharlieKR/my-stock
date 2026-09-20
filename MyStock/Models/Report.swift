@@ -5,7 +5,7 @@ enum Investment: String, Codable, CaseIterable, Identifiable, Sendable {
   case hyxl = "HYXL"
   var id: String { rawValue }
   var currency: String { self == .soxl ? "USD" : "KRW" }
-  var subtitle: String { self == .soxl ? "Tide · 동파 · Tail" : "하이닉스 · ACE · KODEX" }
+  var subtitle: String { self == .soxl ? "미국 주식 · USD" : "국내 주식 · KRW" }
   var symbol: String { self == .soxl ? "chart.line.uptrend.xyaxis" : "chart.bar.xaxis" }
   var timezone: String { self == .soxl ? "미국 거래일 기준" : "한국 거래일 기준" }
 }
@@ -46,6 +46,19 @@ struct DailyReport: Codable, Identifiable, Sendable {
   }
   var statusTitle: String {
     status == "closed" ? "휴장" : status == "settled" ? "정산 완료" : isOrderPlan ? "주문 예정" : "정산 대기"
+  }
+  var dailyReturn: Double? {
+    if let today = details.first(where: { $0.title == "오늘" }),
+      let expression = try? NSRegularExpression(pattern: #"\(([+−-]?[\d.]+)%\)"#),
+      let match = expression.firstMatch(
+        in: today.text, range: NSRange(today.text.startIndex..., in: today.text)),
+      let range = Range(match.range(at: 1), in: today.text),
+      let value = Double(today.text[range].replacingOccurrences(of: "−", with: "-"))
+    {
+      return value
+    }
+    guard let totalAssets, let dailyPnl, totalAssets != dailyPnl else { return nil }
+    return dailyPnl / (totalAssets - dailyPnl) * 100
   }
 }
 
@@ -114,7 +127,11 @@ struct ThreadMessage: Codable, Identifiable, Sendable {
       if body.contains("미체결") { return "일부 체결" }
       return "체결 완료"
     }
-    return activityTitle == "주문 제출" ? "제출 완료" : "생성 완료"
+    if activityTitle == "주문 제출" {
+      let summary = body.components(separatedBy: .newlines).first ?? ""
+      return summary.contains("건") ? summary : "제출 완료"
+    }
+    return "생성 완료"
   }
   var timeLabel: String {
     guard let instant = ISO8601DateFormatter().date(from: date) else { return "" }

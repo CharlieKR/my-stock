@@ -58,14 +58,19 @@ struct NativeTabs: UIViewControllerRepresentable {
 }
 
 private func monogramTabImage(_ text: String) -> UIImage {
-  let size = CGSize(width: 30, height: 23)
+  let size = CGSize(width: 30, height: 25)
   let format = UIGraphicsImageRendererFormat()
-  format.scale = UIScreen.main.scale
-  let font = UIFont.systemFont(ofSize: 14, weight: .semibold)
+  format.scale = 3
+  let font = UIFont.systemFont(ofSize: 11, weight: .bold)
   let roundedFont = font.fontDescriptor.withDesign(.rounded).map {
     UIFont(descriptor: $0, size: font.pointSize)
   } ?? font
   let image = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+    let frame = CGRect(x: 1.5, y: 1.5, width: size.width - 3, height: size.height - 3)
+    let badge = UIBezierPath(roundedRect: frame, cornerRadius: 7)
+    UIColor.black.setStroke()
+    badge.lineWidth = 1.5
+    badge.stroke()
     let attributes: [NSAttributedString.Key: Any] = [
       .font: roundedFont,
       .foregroundColor: UIColor.black,
@@ -74,7 +79,7 @@ private func monogramTabImage(_ text: String) -> UIImage {
     let measured = (text as NSString).size(withAttributes: attributes)
     let origin = CGPoint(
       x: (size.width - measured.width) / 2,
-      y: (size.height - measured.height) / 2)
+      y: (size.height - measured.height) / 2 - 0.25)
     (text as NSString).draw(at: origin, withAttributes: attributes)
   }
   return image.withRenderingMode(.alwaysTemplate)

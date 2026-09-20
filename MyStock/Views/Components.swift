@@ -117,11 +117,15 @@ struct Metric: View {
   let title: String
   let value: String
   var color: Color = .primary
+  var detail: String? = nil
   var body: some View {
     VStack(alignment: .leading, spacing: 7) {
       Text(title).font(.caption).foregroundStyle(.secondary)
       Text(value).font(.title3.weight(.semibold)).monospacedDigit().foregroundStyle(color)
         .minimumScaleFactor(0.65).lineLimit(1)
+      if let detail {
+        Text(detail).font(.caption.weight(.medium)).monospacedDigit().foregroundStyle(color)
+      }
     }.frame(maxWidth: .infinity, alignment: .leading)
   }
 }

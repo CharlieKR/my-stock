@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node server.mjs",
     "sync": "node sync.mjs",
+    "import-orders": "node import-order-history.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {

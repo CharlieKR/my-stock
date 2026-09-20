@@ -31,6 +31,17 @@ import Testing
     text: "주문 제출\n- 매도 ACE 1,026주 @ ₩10,960 / ₩11,244,960 LOC · 제출 완료",
     date: "2026-09-21T00:01:00Z")
   #expect(message.orderPreviews[0].type == "LOC · 제출 완료")
+  #expect(!message.orderPreviews[0].isUnfilled)
+}
+
+@Test func marksOnlyFailedFillStatesAsUnfilled() {
+  let result = ThreadMessage(
+    id: "result",
+    text:
+      "체결 결과\n- 매수 SOXL 10주 @ $100 / $1,000 LOC · 체결 완료\n- 매도 SOXL 5주 @ $110 / $550 LOC · 미체결",
+    date: "")
+  #expect(!result.orderPreviews[0].isUnfilled)
+  #expect(result.orderPreviews[1].isUnfilled)
 }
 @Test func parsesStrategyHeadingsAndOrderTypes() {
   let message = ThreadMessage(
@@ -54,4 +65,10 @@ import Testing
   #expect(!comparison.isOrderActivity)
   #expect(result.isOrderActivity)
   #expect(result.activityTitle == "체결 결과")
+}
+
+@Test func submissionSummaryKeepsSubmittedAndRejectedCounts() {
+  let message = ThreadMessage(
+    id: "execution", text: "주문 제출\n제출 2건 · 거부 2건", date: "2026-09-18T06:00:00Z")
+  #expect(message.activityStatus == "제출 2건 · 거부 2건")
 }

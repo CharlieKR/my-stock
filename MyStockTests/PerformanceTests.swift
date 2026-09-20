@@ -3,13 +3,17 @@ import Testing
 
 @testable import MyStockCore
 
-private func report(_ investment: Investment, _ date: String, assets: Double, pnl: Double?)
+private func report(
+  _ investment: Investment, _ date: String, assets: Double, pnl: Double?, daily: Double? = nil,
+  details: [ReportDetail] = []
+)
   -> DailyReport
 {
   DailyReport(
     id: "\(investment)-\(date)", investment: investment, date: date, currency: investment.currency,
     status: "settled", totalAssets: assets, stockValue: assets * 0.5, cash: assets * 0.5,
-    cumulativePnl: pnl, cumulativeReturn: nil, dailyPnl: nil, dailyPnlLabel: "오늘 손익", details: [],
+    cumulativePnl: pnl, cumulativeReturn: nil, dailyPnl: daily, dailyPnlLabel: "오늘 손익",
+    details: details,
     rawText: "", slackURL: "", threadTS: "", updatedAt: "", quality: nil,
     hasOrderPlan: nil, plannedOrderCount: nil)
 }
@@ -62,6 +66,13 @@ private func monthSeries(assets: (Int) -> Double, pnl: (Int) -> Double?) -> [Dai
   #expect(points.assetChange(at: points[0]) == nil)
   #expect(points.assetChange(at: points[1]) == 25)
   #expect(points.assetChange(at: points[2]) == -10)
+}
+@Test func dailyReturnUsesTheReportedPercentBeforeItsAssetFallback() {
+  let explicit = report(.hyxl, "2026-09-18", assets: 173_660_462, pnl: 50_651_807,
+    daily: 3_877_978, details: [ReportDetail(id: "today", title: "오늘", text: "+3,877,978원 (+2.28%)")])
+  #expect(explicit.dailyReturn == 2.28)
+  let derived = report(.hyxl, "2026-09-19", assets: 110, pnl: 10, daily: 10)
+  #expect(derived.dailyReturn == 10)
 }
 @Test func depositIsExcludedAndDietzWeighted() {
   let data = envelope(

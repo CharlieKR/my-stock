@@ -8,6 +8,9 @@ struct OrderPreview: Identifiable {
   let price: String
   let amount: String
   let type: String
+  var isUnfilled: Bool {
+    ["미체결", "거부", "취소", "실패"].contains { type.contains($0) }
+  }
 }
 
 extension ThreadMessage {

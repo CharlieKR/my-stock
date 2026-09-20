@@ -266,7 +266,8 @@ struct DailyView: View {
         Metric(
           title: "오늘 손익",
           value: Format.money(report.dailyPnl, report.currency, signed: true, hidden: hidden),
-          color: .gain(report.dailyPnl))
+          color: .gain(report.dailyPnl),
+          detail: hidden ? "(•••)" : report.dailyReturn.map { "(\(Format.percent($0)))" })
         Metric(title: "현금", value: Format.money(report.cash, report.currency, hidden: hidden))
       }
       if let total = report.totalAssets, let stock = report.stockValue, total > 0 {
@@ -295,6 +296,7 @@ struct ThreadSection: View {
   @State private var error: String?
   @State private var loading = false
   @State private var activeID = ""
+  @State private var expandedIDs: Set<String> = []
   private var messages: [ThreadMessage] {
     (thread?.messages ?? []).filter(\.isOrderActivity).sorted { $0.date < $1.date }
   }
@@ -346,40 +348,56 @@ struct ThreadSection: View {
 
   private func activityCard(_ message: ThreadMessage) -> some View {
     Surface(padding: 18) {
-      HStack(spacing: 12) {
-        Image(systemName: message.symbol).foregroundStyle(report.investment.tint).frame(width: 24)
-        Text(message.activityTitle).font(.subheadline.weight(.semibold))
-        Spacer()
-        if !message.timeLabel.isEmpty {
-          Text(message.timeLabel).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
-        }
-      }
-      if message.orderPreviews.isEmpty {
-        Pill(
-          text: message.activityStatus,
-          symbol: message.activityTitle == "체결 결과" ? "checkmark.circle" : "checkmark",
-          color: message.activityStatus == "미체결" ? .red : report.investment.tint)
-      } else {
-        Divider()
-        VStack(spacing: 16) {
-          ForEach(message.orderPreviews) { order in
-            HStack(alignment: .top, spacing: 10) {
-              Pill(text: order.side, color: order.side == "매수" ? .inspectionAccent : .red)
-              VStack(alignment: .leading, spacing: 5) {
-                Text(order.name).font(.subheadline.weight(.semibold))
-                Text("\(order.quantity)주 × \(order.price)").font(.caption)
-                  .foregroundStyle(.secondary)
-                if !order.type.isEmpty {
-                  Text(order.type).font(.caption2).foregroundStyle(.tertiary)
+      DisclosureGroup(
+        isExpanded: Binding(
+          get: { expandedIDs.contains(message.id) },
+          set: { expanded in
+            if expanded { expandedIDs.insert(message.id) } else { expandedIDs.remove(message.id) }
+          })
+      ) {
+        if message.orderPreviews.isEmpty {
+          Pill(
+            text: message.activityStatus,
+            symbol: message.activityTitle == "체결 결과" ? "checkmark.circle" : "checkmark",
+            color: ["미체결", "거부", "실패"].contains(where: message.activityStatus.contains)
+              ? .red : report.investment.tint)
+            .padding(.top, 14)
+        } else {
+          VStack(spacing: 16) {
+            ForEach(message.orderPreviews) { order in
+              HStack(alignment: .top, spacing: 10) {
+                Pill(text: order.side, color: order.side == "매수" ? .inspectionAccent : .red)
+                VStack(alignment: .leading, spacing: 5) {
+                  Text(order.name).font(.subheadline.weight(.semibold))
+                    .strikethrough(order.isUnfilled, color: .red)
+                  Text("\(order.quantity)주 × \(order.price)").font(.caption)
+                    .foregroundStyle(.secondary).strikethrough(order.isUnfilled, color: .red)
+                  if !order.type.isEmpty {
+                    Text(order.type).font(.caption2).foregroundStyle(
+                      order.isUnfilled ? Color.red : Color.secondary)
+                  }
                 }
+                Spacer(minLength: 2)
+                if order.isUnfilled {
+                  Image(systemName: "xmark.circle.fill").font(.caption).foregroundStyle(.red)
+                }
+                Text(order.amount).font(.subheadline.weight(.medium)).monospacedDigit()
+                  .lineLimit(1).minimumScaleFactor(0.6)
+                  .strikethrough(order.isUnfilled, color: .red)
               }
-              Spacer(minLength: 2)
-              Text(order.amount).font(.subheadline.weight(.medium)).monospacedDigit()
-                .lineLimit(1).minimumScaleFactor(0.6)
             }
+          }.padding(.top, 16)
+        }
+      } label: {
+        HStack(spacing: 12) {
+          Image(systemName: message.symbol).foregroundStyle(report.investment.tint).frame(width: 24)
+          Text(message.activityTitle).font(.subheadline.weight(.semibold))
+          Spacer()
+          if !message.timeLabel.isEmpty {
+            Text(message.timeLabel).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
           }
         }
-      }
+      }.tint(.secondary)
     }
   }
 }
