@@ -297,15 +297,15 @@ struct ThreadSection: View {
   @State private var loading = false
   @State private var activeID = ""
   @State private var expandedIDs: Set<String> = []
-  private var messages: [ThreadMessage] {
-    (thread?.messages ?? []).filter(\.isOrderActivity).sorted { $0.date < $1.date }
+  private var activities: [OrderActivity] {
+    OrderActivity.timeline(thread?.messages ?? [])
   }
   private var loadID: String {
     report.id + report.updatedAt + (report.messages ?? []).map { $0.id + $0.text }.joined()
   }
   var body: some View {
     VStack(spacing: 12) {
-      if loading || error != nil || !messages.isEmpty {
+      if loading || error != nil || !activities.isEmpty {
         SectionLabel(title: "주문", subtitle: "시간순")
         if hidden {
           Surface { Notice(text: "금액 숨김을 끄면 주문을 볼 수 있어요.", symbol: "eye.slash") }
@@ -320,8 +320,8 @@ struct ThreadSection: View {
           if thread?.partial == true {
             Notice(text: "일부 주문 기록만 표시됩니다.")
           }
-          ForEach(messages) { message in
-            activityCard(message)
+          ForEach(activities) { activity in
+            activityCard(activity)
           }
         }
       }
@@ -346,25 +346,29 @@ struct ThreadSection: View {
     if activeID == id { loading = false }
   }
 
-  private func activityCard(_ message: ThreadMessage) -> some View {
-    Surface(padding: 18) {
+  private func activityCard(_ activity: OrderActivity) -> some View {
+    let message = activity.message
+    let orders = activity.orders
+    return Surface(padding: 18) {
       DisclosureGroup(
         isExpanded: Binding(
-          get: { expandedIDs.contains(message.id) },
+          get: { expandedIDs.contains(report.id + activity.id) },
           set: { expanded in
-            if expanded { expandedIDs.insert(message.id) } else { expandedIDs.remove(message.id) }
+            let id = report.id + activity.id
+            if expanded { expandedIDs.insert(id) } else { expandedIDs.remove(id) }
           })
       ) {
-        if message.orderPreviews.isEmpty {
+        if orders.isEmpty || activity.showsSubmissionSummary {
           Pill(
             text: message.activityStatus,
             symbol: message.activityTitle == "체결 결과" ? "checkmark.circle" : "checkmark",
             color: ["미체결", "거부", "실패"].contains(where: message.activityStatus.contains)
               ? .red : report.investment.tint)
             .padding(.top, 14)
-        } else {
+        }
+        if !orders.isEmpty {
           VStack(spacing: 16) {
-            ForEach(message.orderPreviews) { order in
+            ForEach(orders) { order in
               HStack(alignment: .top, spacing: 10) {
                 Pill(text: order.side, color: order.side == "매수" ? .inspectionAccent : .red)
                 VStack(alignment: .leading, spacing: 5) {

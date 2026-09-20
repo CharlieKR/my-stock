@@ -72,3 +72,53 @@ import Testing
     id: "execution", text: "주문 제출\n제출 2건 · 거부 2건", date: "2026-09-18T06:00:00Z")
   #expect(message.activityStatus == "제출 2건 · 거부 2건")
 }
+
+@Test func orderCardAdvancesFromPlanToSubmissionWithoutDuplicatingRows() {
+  let plan = ThreadMessage(
+    id: "plan", text: "주문표 생성\n- 매수 KODEX 10주 @ ₩10,000 / ₩100,000 LOC · 예정",
+    date: "2026-09-18T00:00:00Z")
+  let submission = ThreadMessage(
+    id: "execution", text: "주문 제출\n- 매수 KODEX 8주 @ ₩10,000 / ₩80,000 LOC · 제출 완료",
+    date: "2026-09-18T00:10:00Z")
+  let planned = OrderActivity.timeline([plan])
+  let submitted = OrderActivity.timeline([submission, plan])
+  #expect(planned.count == 1)
+  #expect(planned[0].message.activityTitle == "주문표")
+  #expect(planned[0].orders[0].type == "LOC · 예정")
+  #expect(submitted.count == 1)
+  #expect(submitted[0].id == planned[0].id)
+  #expect(submitted[0].message.activityTitle == "주문 제출")
+  #expect(submitted[0].message.date == submission.date)
+  #expect(submitted[0].orders.count == 1)
+  #expect(submitted[0].orders[0].quantity == "8")
+  #expect(submitted[0].orders[0].type == "LOC · 제출 완료")
+}
+
+@Test func historicalSubmissionRetainsPlanAndRejectionCountsWithoutInventingRowStatus() {
+  let plan = ThreadMessage(
+    id: "plan", text: "주문표 생성\n- 매수 SOXL 10주 @ $100 / $1,000 LOC · 예정",
+    date: "2026-09-18T00:00:00Z")
+  let submission = ThreadMessage(
+    id: "execution", text: "주문 제출\n제출 0건 · 거부 1건", date: "2026-09-18T00:10:00Z")
+  let result = ThreadMessage(
+    id: "result", text: "체결 결과\n- 매수 SOXL 10주 @ $100 / $1,000 LOC · 미체결",
+    date: "2026-09-18T06:00:00Z")
+  let activities = OrderActivity.timeline([result, submission, plan])
+  #expect(activities.count == 2)
+  #expect(activities[0].showsSubmissionSummary)
+  #expect(activities[0].message.activityStatus == "제출 0건 · 거부 1건")
+  #expect(activities[0].orders[0].amount == "$1,000")
+  #expect(activities[0].orders[0].type == "LOC")
+  #expect(activities[1].message.activityTitle == "체결 결과")
+  #expect(activities[1].orders[0].isUnfilled)
+}
+
+@Test func submissionCanBeShownWithoutAnEarlierPlan() {
+  let submission = ThreadMessage(
+    id: "execution", text: "주문 제출\n제출 2건", date: "2026-09-18T00:10:00Z")
+  let activities = OrderActivity.timeline([submission])
+  #expect(activities.count == 1)
+  #expect(activities[0].showsSubmissionSummary)
+  #expect(activities[0].orders.isEmpty)
+  #expect(activities[0].message.activityTitle == "주문 제출")
+}
