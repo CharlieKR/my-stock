@@ -122,3 +122,16 @@ import Testing
   #expect(activities[0].orders.isEmpty)
   #expect(activities[0].message.activityTitle == "주문 제출")
 }
+
+@Test(arguments: [
+  ("제출 완료", "완료"),
+  ("제출 0건 · 거부 1건", "제출 0건 · 거부 1건"),
+  ("- 매수 SOXL 10주 @ $100 / $1,000 LOC · 제출 완료", "완료"),
+  ("- 매수 SOXL 10주 @ $100 / $1,000 LOC · 거부", "확인 필요"),
+  ("- 매수 SOXL 10주 @ $100 / $1,000 LOC · 예정", "확인 대기"),
+])
+func submissionHeaderDoesNotTreatRejectedOrPendingOrdersAsComplete(body: String, expected: String) {
+  let message = ThreadMessage(id: "execution", text: "주문 제출\n" + body, date: "")
+  let activity = OrderActivity(id: "orders", message: message, plan: nil)
+  #expect(activity.submissionStatus == expected)
+}

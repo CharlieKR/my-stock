@@ -22,6 +22,20 @@ struct OrderActivity: Identifiable {
 
   var isSubmission: Bool { message.activityTitle == "주문 제출" }
   var showsSubmissionSummary: Bool { isSubmission && message.orderPreviews.isEmpty }
+  var submissionStatus: String? {
+    guard isSubmission else { return nil }
+    let rows = message.orderPreviews
+    if rows.isEmpty {
+      let summary = message.body.components(separatedBy: .newlines).first ?? ""
+      return summary == "제출 완료" ? "완료" : summary.isEmpty ? "확인 대기" : summary
+    }
+    if rows.contains(where: \.isUnfilled) { return "확인 필요" }
+    let completed = rows.filter {
+      ["제출 완료", "체결 완료"].contains(where: $0.type.contains)
+    }.count
+    if completed == rows.count { return "완료" }
+    return completed > 0 ? "일부 제출" : "확인 대기"
+  }
   var orders: [OrderPreview] {
     let rows = message.orderPreviews
     guard showsSubmissionSummary, let plan else { return rows }

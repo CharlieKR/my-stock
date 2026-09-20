@@ -358,7 +358,7 @@ struct ThreadSection: View {
             if expanded { expandedIDs.insert(id) } else { expandedIDs.remove(id) }
           })
       ) {
-        if orders.isEmpty || activity.showsSubmissionSummary {
+        if orders.isEmpty && !activity.isSubmission {
           Pill(
             text: message.activityStatus,
             symbol: message.activityTitle == "체결 결과" ? "checkmark.circle" : "checkmark",
@@ -397,6 +397,11 @@ struct ThreadSection: View {
           Image(systemName: message.symbol).foregroundStyle(report.investment.tint).frame(width: 24)
           Text(message.activityTitle).font(.subheadline.weight(.semibold))
           Spacer()
+          if let status = activity.submissionStatus {
+            Text(status).font(.caption.weight(.medium))
+              .foregroundStyle(status == "완료" ? report.investment.tint : Color.secondary)
+              .accessibilityIdentifier("order.submissionStatus")
+          }
           if !message.timeLabel.isEmpty {
             Text(message.timeLabel).font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
           }
