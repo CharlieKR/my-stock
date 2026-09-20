@@ -1,0 +1,15 @@
+.DS_Store
+.build/
+.swiftpm/
+build/
+build-device/
+.local/
+DerivedData/
+*.xcresult
+*.xcuserstate
+xcuserdata/
+.env
+.env.*
+!.env.example
+node_modules/
+docs/screenshots/
