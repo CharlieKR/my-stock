@@ -9,7 +9,6 @@ struct ReportView: View {
   @State private var period: ReportPeriod = .all
   @State private var showMethod = false
   @State private var metric = "수익금"
-  @State private var inspectedPoint: AssetPoint?
   init(initialScope: ReportScope) {
     _scope = State(initialValue: initialScope)
   }
@@ -35,13 +34,6 @@ struct ReportView: View {
     }
   }
   private var months: [MonthlyPerformance] { allMonths }
-  private var inspectedChange: Double? { yearPoints.assetChange(at: inspectedPoint) }
-  private var inspectionColor: Color { .movement(inspectedChange) }
-  private var inspectedChangeText: String? {
-    guard inspectedPoint != nil else { return nil }
-    guard let inspectedChange else { return "(이전 기록 없음)" }
-    return "(\(Format.money(inspectedChange, scope.currency, signed: true, hidden: hidden)))"
-  }
   private var selectedSummary: MonthlyPerformance? {
     if let summary=serverPerformance?.summary { return summary.display }
     guard store.isDemo,let first=points.first,let last=points.last else { return nil }
@@ -78,55 +70,9 @@ struct ReportView: View {
             .font(.caption).foregroundStyle(.secondary)
             .accessibilityIdentifier("report.dateRange")
         }
-        Surface {
-          HStack {
-            Text(inspectedPoint == nil ? "총 자산" : "선택일 자산").font(.subheadline)
-              .lineLimit(1).minimumScaleFactor(0.7)
-              .foregroundStyle(inspectedPoint == nil ? Color.secondary : inspectionColor)
-              .accessibilityIdentifier("report.assetTitle")
-            Spacer()
-            Pill(text: inspectedPoint == nil ? scope.currency : "조회 중", color:inspectedPoint == nil ? .brandAccent : inspectionColor)
-          }
-          Text(Format.money((inspectedPoint ?? yearPoints.last)?.assets, scope.currency, hidden: hidden)).font(
-            .system(.largeTitle, design: .rounded).weight(.semibold)
-          ).monospacedDigit().lineLimit(1).minimumScaleFactor(0.55)
-            .foregroundStyle(inspectedPoint == nil ? Color.primary : inspectionColor)
-            .accessibilityIdentifier("report.assetAmount")
-          if let latest = inspectedPoint ?? yearPoints.last {
-            HStack(spacing: 4) {
-              Text("\(ReportDate.label(latest.date, format: "yyyy년 M월 d일")) 기준")
-              if let inspectedChangeText { Text(inspectedChangeText).foregroundStyle(inspectionColor) }
-            }.font(.caption)
-              .foregroundStyle(inspectedPoint == nil ? Color.secondary : inspectionColor)
-              .lineLimit(1).minimumScaleFactor(0.8)
-              .accessibilityIdentifier("report.assetDate")
-          }
-          if !hidden && yearPoints.count > 1 {
-            AssetChart(
-              points: yearPoints, currency: scope.currency,
-              tint: scope == .hyxl ? .hyxlAccent : .brandAccent, selectedPoint:$inspectedPoint)
-          }
-          if let month = selectedSummary {
-            Divider()
-            HStack(spacing: 16) {
-              Metric(
-                title: "기간 수익금\(month.estimated ? " (추정)" : "")",
-                value: Format.money(month.profit, scope.currency, signed: true, hidden: hidden),
-                color: .gain(month.profit))
-              Metric(
-                title: "기간 수익률\(month.estimated ? " (추정)" : "")",
-                value: hidden ? "•••" : Format.percent(month.returnPercent),
-                color: .gain(month.returnPercent))
-            }
-            Text("수익 계산 · \(ReportDate.label(month.startDate, format: "yyyy.MM.dd")) – \(ReportDate.label(month.endDate, format: "yyyy.MM.dd"))")
-              .font(.caption2).foregroundStyle(.secondary)
-            if let reason=month.reason { Notice(text:reason) }
-          }
-        }
-        .overlay {
-          RoundedRectangle(cornerRadius:26).strokeBorder(inspectionColor.opacity(inspectedPoint == nil ? 0 : 0.35),lineWidth:1)
-            .allowsHitTesting(false)
-        }
+        ReportAssetCard(points: points, currency: scope.currency,
+          tint: scope == .hyxl ? .hyxlAccent : .brandAccent, summary: selectedSummary)
+          .id(scope.rawValue + period.rawValue)
         if scope == .all, let latest = yearPoints.last {
           Notice(
             text:
@@ -169,8 +115,8 @@ struct ReportView: View {
                     VStack(alignment: .leading, spacing: 5) {
                       Text(month.label).font(.subheadline.weight(.semibold))
                       Text(String(month.month.prefix(4))).font(.caption2).foregroundStyle(.secondary)
-                      if month.partial {
-                        Text("일부 기간").font(.system(size: 9)).foregroundStyle(.orange)
+                      if let periodLabel = month.periodLabel {
+                        Text(periodLabel).font(.system(size: 9)).foregroundStyle(.orange)
                       }
                     }.frame(width: 48, alignment: .leading)
                     VStack(alignment: .leading, spacing: 5) {
@@ -195,7 +141,7 @@ struct ReportView: View {
             }
           }
         }
-        Notice(text: "과거 기록은 누적 손익과 자산으로 원금 변화를 추정합니다. ‘—’는 손익 근거가 부족한 항목이며, 월을 누르면 계산 범위와 사유를 볼 수 있어요.")
+        Notice(text: "과거 기록은 누적·일별 손익과 자산으로 원금 변화를 추정합니다. ‘—’는 손익 근거가 부족한 항목이며, 월을 누르면 계산 범위와 사유를 볼 수 있어요.")
         Notice(text: "최근 기록일 기준으로 조회합니다. 월별 내역도 선택한 기간만 포함하며, 수익 계산에는 시작일 직전 정산액을 기준으로 사용합니다.")
       }
     }
@@ -218,9 +164,6 @@ struct ReportView: View {
       }
     }
     .sheet(isPresented: $showMethod) { methodSheet }
-    .onChange(of:scope) { _, _ in inspectedPoint = nil }
-    .onChange(of:period) { _, _ in inspectedPoint = nil }
-    .onChange(of:hidden) { _, _ in inspectedPoint = nil }
     .refreshable { await store.refresh() }
   }
   private var monthlyChart: some View {
@@ -268,7 +211,7 @@ struct ReportView: View {
       List {
         Section("월별 손익") {
           Text(
-            "자산 증감에서 순입출금을 제외합니다. 원장이 없는 보관 기록은 ‘자산 − 누적 손익’의 변화로 원금 증감을 추정합니다. 첫 달은 첫 관측일부터 계산하고 일부 기간으로 표시합니다. 결과는 기기에 저장합니다."
+            "자산 증감에서 순입출금을 제외합니다. 원장이 없는 보관 기록은 ‘자산 − 누적 손익’의 변화로 원금 증감을 추정합니다. 첫 달은 첫 관측일부터 계산하며, 시작일과 이번 달의 마지막 기록일을 표시합니다. 결과는 기기에 저장합니다."
           )
         }
         Section("수익률") {
@@ -283,7 +226,7 @@ struct ReportView: View {
         }
         Section("데이터가 부족한 달") {
           Text(
-            "누적 손익이 누락된 과거 구간은 수익으로 추측하지 않습니다. 누락 이후 연속으로 계산 가능한 구간이 있으면 그 시작일을 명시하고 일부 기간 수익으로 표시합니다. 월말까지 근거가 없으면 수익은 비워두고 자산만 표시합니다."
+            "누적 손익이 없으면 연속된 일별 손익을 사용해 자산 변화에서 순입출금을 추정합니다. 중간 거래일 기록이 없으면 일별 손익을 여러 날에 적용하지 않습니다. 계산 근거가 부족한 경우에만 수익을 비우고 사유를 표시합니다."
           )
         }
         Section("환율 출처") {
@@ -295,6 +238,75 @@ struct ReportView: View {
           ToolbarItem(placement: .confirmationAction) { Button("완료") { showMethod = false } }
         }
     }
+  }
+}
+
+/// Selection state stays in this card so dragging never rebuilds monthly tables.
+private struct ReportAssetCard: View {
+  let points: [AssetPoint]
+  let currency: String
+  let tint: Color
+  let summary: MonthlyPerformance?
+  @AppStorage("hideAmounts") private var hidden = false
+  @State private var inspectedPoint: AssetPoint?
+  private var inspectedChange: Double? { points.assetChange(at: inspectedPoint) }
+  private var inspectionColor: Color { .movement(inspectedChange) }
+  private var inspectedChangeText: String? {
+    guard inspectedPoint != nil else { return nil }
+    guard let inspectedChange else { return "(이전 기록 없음)" }
+    return "(\(Format.money(inspectedChange, currency, signed: true, hidden: hidden)))"
+  }
+  var body: some View {
+        Surface {
+          HStack {
+            Text(inspectedPoint == nil ? "총 자산" : "선택일 자산").font(.subheadline)
+              .lineLimit(1).minimumScaleFactor(0.7)
+              .foregroundStyle(inspectedPoint == nil ? Color.secondary : inspectionColor)
+              .accessibilityIdentifier("report.assetTitle")
+            Spacer()
+            Pill(text: inspectedPoint == nil ? currency : "조회 중", color:inspectedPoint == nil ? .brandAccent : inspectionColor)
+          }
+          Text(Format.money((inspectedPoint ?? points.last)?.assets, currency, hidden: hidden)).font(
+            .system(.largeTitle, design: .rounded).weight(.semibold)
+          ).monospacedDigit().lineLimit(1).minimumScaleFactor(0.55)
+            .foregroundStyle(inspectedPoint == nil ? Color.primary : inspectionColor)
+            .accessibilityIdentifier("report.assetAmount")
+          if let latest = inspectedPoint ?? points.last {
+            HStack(spacing: 4) {
+              Text("\(ReportDate.label(latest.date, format: "yyyy년 M월 d일")) 기준")
+              if let inspectedChangeText { Text(inspectedChangeText).foregroundStyle(inspectionColor) }
+            }.font(.caption)
+              .foregroundStyle(inspectedPoint == nil ? Color.secondary : inspectionColor)
+              .lineLimit(1).minimumScaleFactor(0.8)
+              .accessibilityIdentifier("report.assetDate")
+          }
+          if !hidden && points.count > 1 {
+            AssetChart(
+              points: points, currency: currency,
+              tint: tint, selectedPoint:$inspectedPoint)
+          }
+          if let month = summary {
+            Divider()
+            HStack(spacing: 16) {
+              Metric(
+                title: "기간 수익금\(month.estimated ? " (추정)" : "")",
+                value: Format.money(month.profit, currency, signed: true, hidden: hidden),
+                color: .gain(month.profit))
+              Metric(
+                title: "기간 수익률\(month.estimated ? " (추정)" : "")",
+                value: hidden ? "•••" : Format.percent(month.returnPercent),
+                color: .gain(month.returnPercent))
+            }
+            Text("수익 계산 · \(ReportDate.label(month.startDate, format: "yyyy.MM.dd")) – \(ReportDate.label(month.endDate, format: "yyyy.MM.dd"))")
+              .font(.caption2).foregroundStyle(.secondary)
+            if let reason=month.reason { Notice(text:reason) }
+          }
+        }
+        .overlay {
+          RoundedRectangle(cornerRadius:26).strokeBorder(inspectionColor.opacity(inspectedPoint == nil ? 0 : 0.35),lineWidth:1)
+            .allowsHitTesting(false)
+        }
+    .onChange(of:hidden) { _, _ in inspectedPoint = nil }
   }
 }
 

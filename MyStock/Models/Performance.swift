@@ -47,6 +47,32 @@ extension Array where Element == AssetPoint {
   }
 }
 
+/// Prepared once per series, not for every movement of the chart cursor.
+struct AssetChartData {
+  let points: [AssetPoint]
+  let dates: [Date]
+  let domain: ClosedRange<Double>
+  init(points: [AssetPoint]) {
+    self.points = points
+    dates = points.map(\.day)
+    let low = points.map(\.assets).min() ?? 0
+    let high = points.map(\.assets).max() ?? 1
+    let gap = max((high - low) * 0.24, max(1, high * 0.015))
+    domain = max(0, low - gap)...(high + gap)
+  }
+  func nearestIndex(to date: Date) -> Int? {
+    guard !dates.isEmpty else { return nil }
+    var low = 0, high = dates.count
+    while low < high {
+      let middle = (low + high) / 2
+      if dates[middle] < date { low = middle + 1 } else { high = middle }
+    }
+    if low == 0 { return 0 }
+    if low == dates.count { return dates.count - 1 }
+    return date.timeIntervalSince(dates[low - 1]) <= dates[low].timeIntervalSince(date) ? low - 1 : low
+  }
+}
+
 struct MonthlyPerformance: Identifiable {
   let month: String
   let startDate: String
@@ -59,6 +85,10 @@ struct MonthlyPerformance: Identifiable {
   let partial: Bool
   let estimated: Bool
   var reason: String? = nil
+  var coverageLabel: String? = nil
+  var periodLabel: String? {
+    coverageLabel ?? (partial ? (profit == nil ? "근거 부족" : "\(ReportDate.label(startDate, format: "M.d"))부터") : nil)
+  }
   var id: String { month }
   var assetChange: Double { endAssets - startAssets }
   var label: String { ReportDate.label(month + "-01", format: "M월") }

@@ -96,7 +96,7 @@ async function collectReports({ full = false } = {}) {
         const seen = new Set();
         do {
           const thread = await slackRead('conversations.replies', config, { ts: report.threadTS, ...(cursor ? { cursor } : {}) });
-          replies.push(...(thread.messages ?? []).filter(m => m.ts !== report.threadTS && /일일 리포트/.test(m.text ?? '')));
+          replies.push(...(thread.messages ?? []).filter(m => m.ts !== report.threadTS && /일일 리포트|종합/.test(m.text ?? '')));
           cursor = thread.response_metadata?.next_cursor ?? '';
           if (cursor && seen.has(cursor)) throw new Error('과거 정산 스레드 페이지를 모두 읽지 못했습니다.');
           seen.add(cursor);

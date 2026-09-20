@@ -134,35 +134,33 @@ struct AssetChart: View {
   let currency: String
   var tint: Color = .brandAccent
   @Binding var selectedPoint: AssetPoint?
-  @State private var selectedDate: Date?
+  @State private var chartData = AssetChartData(points: [])
+  @State private var selectedIndex: Int?
   private var selected: AssetPoint? {
-    selectedDate.flatMap { target in
-      points.min { abs($0.day.timeIntervalSince(target)) < abs($1.day.timeIntervalSince(target)) }
-    }
+    guard let selectedIndex, chartData.points.indices.contains(selectedIndex) else { return nil }
+    return chartData.points[selectedIndex]
   }
-  private var selectedChange: Double? { points.assetChange(at: selected) }
+  private var selectedChange: Double? {
+    guard let selectedIndex, selectedIndex > 0 else { return nil }
+    return chartData.points[selectedIndex].assets - chartData.points[selectedIndex - 1].assets
+  }
   private var activeTint: Color {
-    selectedDate == nil ? tint : .movement(selectedChange)
-  }
-  private var domain: ClosedRange<Double> {
-    let values = points.map(\.assets)
-    let low = values.min() ?? 0
-    let high = values.max() ?? 1
-    let gap = max((high - low) * 0.24, max(1, high * 0.015))
-    return max(0, low - gap)...(high + gap)
+    selectedIndex == nil ? tint : .movement(selectedChange)
   }
   var body: some View {
       Chart {
-        ForEach(points) { point in
+        ForEach(chartData.points.indices, id: \.self) { index in
+          let point = chartData.points[index]
+          let day = chartData.dates[index]
           AreaMark(
-            x: .value("날짜", point.day), yStart: .value("기준", domain.lowerBound),
+            x: .value("날짜", day), yStart: .value("기준", chartData.domain.lowerBound),
             yEnd: .value("자산", point.assets)
           )
           .foregroundStyle(
             LinearGradient(
               colors: [activeTint.opacity(0.20), activeTint.opacity(0.01)], startPoint: .top, endPoint: .bottom)
           )
-          LineMark(x: .value("날짜", point.day), y: .value("자산", point.assets)).lineStyle(
+          LineMark(x: .value("날짜", day), y: .value("자산", point.assets)).lineStyle(
             StrokeStyle(lineWidth: 2.5, lineCap: .round)
           ).foregroundStyle(activeTint)
         }
@@ -173,7 +171,7 @@ struct AssetChart: View {
             .foregroundStyle(activeTint).symbolSize(55)
         }
       }
-      .chartYScale(domain: domain)
+      .chartYScale(domain: chartData.domain)
       .chartXAxis {
         AxisMarks(values: .automatic(desiredCount: 4)) { _ in
           AxisValueLabel(format: .dateTime.month(.defaultDigits).day(), centered: false)
@@ -196,12 +194,19 @@ struct AssetChart: View {
               guard let location, let anchor=proxy.plotFrame else { clearSelection(); return }
               let frame=geometry[anchor]
               let x=min(max(location.x-frame.minX,0),frame.width)
-              selectedDate=proxy.value(atX:x,as:Date.self)
+              guard let date=proxy.value(atX:x,as:Date.self),let index=chartData.nearestIndex(to:date),index != selectedIndex else { return }
+              var transaction=Transaction();transaction.disablesAnimations=true
+              withTransaction(transaction) {
+                selectedIndex=index
+                selectedPoint=chartData.points[index]
+              }
             })
         }
       }
-      .onChange(of:selectedDate) { _, _ in selectedPoint = selected }
-      .onChange(of:points.map(\.id)) { _, _ in clearSelection() }
+      .onChange(of:points.map { ChartValue(date:$0.date,assets:$0.assets) }, initial:true) { _, _ in
+        clearSelection()
+        chartData=AssetChartData(points:points)
+      }
       .onDisappear { clearSelection() }
       .frame(height: 160)
       .accessibilityLabel("자산 변화 차트")
@@ -212,8 +217,13 @@ struct AssetChart: View {
       } ?? "최신 자산")
   }
   private func clearSelection() {
-    selectedDate = nil
+    guard selectedIndex != nil || selectedPoint != nil else { return }
+    selectedIndex = nil
     selectedPoint = nil
+  }
+  private struct ChartValue: Equatable {
+    let date: String
+    let assets: Double
   }
 }
 

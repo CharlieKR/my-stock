@@ -1,5 +1,7 @@
 # 운영 반영 기록 — 2026-09-20
 
+후속 수정: [과거 기록 복원 및 조회 개선](DATA_COVERAGE.md)에 6월 계산 보완, 누락 정산 10건 복원, 차트 반응 개선과 좌우 날짜 이동을 기록했다.
+
 ## 배포 구조
 
 - iPhone SwiftUI 앱 → `https://my-stock-blue.vercel.app/v2/*` → 기존 lst/kst Supabase의 전용 `reporting` 스키마.

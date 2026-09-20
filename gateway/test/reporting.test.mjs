@@ -38,6 +38,32 @@ test('archive, missing ledger and initial month do not invent returns',()=>{
   assert.equal(r.months[0].profit,null);assert.equal(r.months[0].returnPercent,null);assert.equal(r.months[0].endAssets,'120.00000000');
 });
 const archived=(date,nav,pnl,extra={})=>report(date,nav,{quality:'legacy_archive',cashflowCoverageFrom:null,cumulativePnl:pnl,...extra});
+test('daily P&L bridges missing cumulative history and removes deposits from return',()=>{
+  const rows=[archived('2026-06-29',100,null),archived('2026-06-30',151,null,{dailyPnl:1})];
+  const result=calculatePerformance(rows,[],'SOXL',new Date('2026-09-20')).months[0];
+  assert.equal(result.profit,'1.00000000');assert.equal(result.cashflow,'50.00000000');
+  assert.equal(result.returnPercent,'1.00000000');assert.equal(result.coverageLabel,'6.29부터');
+  assert.match(result.reason,/일별 손익/);
+  const gap=calculatePerformance([rows[0],{...rows[1],date:'2026-07-02'}],[],'SOXL',new Date('2026-09-20'));
+  assert.equal(gap.summary.profit,null);assert.equal(gap.summary.coverageLabel,'근거 부족');
+});
+test('combined June includes a new investment without counting its opening balance as profit',()=>{
+  const rows=[archived('2026-05-29',100,0),archived('2026-06-29',110,10),archived('2026-06-30',120,20),
+    archived('2026-06-29',1000,null,{id:'HYXL-a',investment:'HYXL',currency:'KRW'}),
+    archived('2026-06-30',990,null,{id:'HYXL-b',investment:'HYXL',currency:'KRW',dailyPnl:-10})];
+  const rates=rows.map(r=>({date:r.date,usdKrw:1000}));
+  const p=calculatePerformance(rows,rates,'all',new Date('2026-09-20')).months[0];
+  assert.equal(p.month,'2026-06');assert.equal(p.profit,'19990.00000000');
+  assert.equal(p.cashflow,'1000.00000000');assert.equal(p.partial,false);
+  assert.equal(p.startDate,'2026-05-29');assert.equal(p.estimated,true);
+});
+test('carried daily P&L is counted once and ongoing months name their last date',()=>{
+  const rows=[archived('2026-08-31',100,null),archived('2026-09-01',110,null,{dailyPnl:10}),
+    archived('2026-08-31',1000,0,{id:'HYXL-a',investment:'HYXL',currency:'KRW'}),
+    archived('2026-09-02',1020,20,{id:'HYXL-b',investment:'HYXL',currency:'KRW'})];
+  const p=calculatePerformance(rows,rows.map(r=>({date:r.date,usdKrw:1000})),'all',new Date('2026-09-20')).months[0];
+  assert.equal(p.profit,'10020.00000000');assert.equal(p.coverageLabel,'9.2까지');
+});
 test('historical cumulative P&L restores partial first month and excludes capital additions',()=>{
   const rows=[archived('2026-03-25',100,0),archived('2026-03-26',210,10),archived('2026-03-31',220,20)];
   const p=calculatePerformance(rows,[],'SOXL',when);

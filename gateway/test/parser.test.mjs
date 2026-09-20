@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import { amount, parseReport, normalizeMessages } from '../parser.mjs';
 
 const soxl = { ts: '1789714804.501599', text: ':date: *SOXL 매매* (2026-09-18)\n:white_check_mark: *정산 완료* (2026-09-18)\n```\n체결 : 없음\n자산 : 총 $1,250.50 / 주식 $250.50\n누적 : +$250.50 (+25.05%)\n오늘 : -$10.25 (-0.81%)\n현금 : $1,000.00\nRP : 누적 +$2.15 (+$0.03)\nTail : 오늘 미진입 / 누적 +$50.20\n```' };
+test('legacy combined balance is read without the optional daily-report heading', () => {
+  const message={ts:soxl.ts,text:'*LS 자동매매* (2026-04-30)\n*LOC vs 30분전 비교*\n동파 정리\n총 자산: $500\n\n:zap: 종합 (원금 $1,000)\n주식평가: $200\n예수금: $900\n총 자산: $1,100\n수익률: +10.00% (+$100)\n'};
+  const parsed=parseReport(message,'SOXL','CEXAMPLE');
+  assert.equal(parsed.status,'settled');assert.equal(parsed.totalAssets,1100);
+  assert.equal(parsed.cumulativePnl,100);assert.equal(parsed.cash,900);
+  assert.equal(parseReport({...message,text:message.text.split(':zap:')[0]},'SOXL','CEXAMPLE').totalAssets,null);
+});
 test('SOXL dollars, losses, detail rows and source link', () => {
   const r = parseReport(soxl, 'SOXL', 'CEXAMPLE');
   assert.equal(r.totalAssets, 1250.5); assert.equal(r.cash, 1000);

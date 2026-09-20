@@ -22,8 +22,9 @@ struct ServerPerformance: Codable, Sendable {
   let points: [ServerAssetPoint]
   let months: [ServerMonth]
   func assetPoints(in envelope: ReportEnvelope) -> [AssetPoint] {
-    points.map { p in AssetPoint(date:p.date, assets:p.assets.value,
-      constituents:p.constituentIDs.compactMap { id in envelope.reports.first { $0.id == id } }, fx:p.fx.value) }
+    let reports = Dictionary(envelope.reports.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+    return points.map { p in AssetPoint(date:p.date, assets:p.assets.value,
+      constituents:p.constituentIDs.compactMap { reports[$0] }, fx:p.fx.value) }
   }
 }
 struct ServerAssetPoint: Codable, Sendable {
@@ -44,10 +45,11 @@ struct ServerMonth: Codable, Sendable {
   let partial: Bool
   let estimated: Bool
   var reason: String? = nil
+  var coverageLabel: String? = nil
   var display: MonthlyPerformance {
     MonthlyPerformance(month:month,startDate:startDate,endDate:endDate,startAssets:startAssets.value,
       endAssets:endAssets.value,profit:profit?.value,returnPercent:returnPercent?.value,
-      cashflow:cashflow?.value,partial:partial,estimated:estimated,reason:reason)
+      cashflow:cashflow?.value,partial:partial,estimated:estimated,reason:reason,coverageLabel:coverageLabel)
   }
 }
 

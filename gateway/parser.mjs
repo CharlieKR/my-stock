@@ -23,8 +23,8 @@ export function parseReport(message, investment, channel) {
   const cumulative = line('누적');
   // Earlier SOXL reports publish settlement only inside the daily thread.
   // Read the explicit combined section, never an individual strategy balance.
-  const legacy = investment === 'SOXL' && /일일 리포트/.test(clean)
-    ? clean.match(/(?:^|\n)\s*종합[^\n]*\n([\s\S]*?)(?:\n\s*\n|$)/)?.[0] : null;
+  const legacy = investment === 'SOXL'
+    ? clean.match(/(?:^|\n)\s*종합(?:\s*\([^\n)]*\))?\s*\n([\s\S]*?)(?:\n\s*\n|$)/)?.[0] : null;
   const totalAssets = amount(assets?.match(/총\s+([^/]+)/)?.[1])
     ?? amount(legacy?.match(/(?:총\s*자산|장부 자산)\s*:\s*([^\n(]+)/)?.[1]);
   const stockValue = amount(assets?.match(/주식\s+(.+)/)?.[1])

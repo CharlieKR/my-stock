@@ -1,6 +1,6 @@
 import Decimal from 'decimal.js';
 Decimal.set({precision:32});
-export const calculationVersion='nav-ledger-dietz-2.3-verified-history';
+export const calculationVersion='nav-ledger-dietz-2.4-daily-history';
 const D=v=>new Decimal(v);
 const days=(a,b)=>(Date.parse(b)-Date.parse(a))/86400000;
 const text=v=>v===null?null:D(v).toFixed(8);
@@ -9,32 +9,50 @@ const latest=(rows,date)=>rows.filter(r=>r.date<=date && days(r.date,date)<=7).a
 // Archived reports retain cumulative P&L but not a verified cash ledger.
 // Changes in NAV minus cumulative P&L estimate capital changes; never treat
 // deposits, or the first appearance of another investment, as investment gain.
+function consecutiveWeekdays(before,after) {
+  if(days(before,after)<1||days(before,after)>3)return false;
+  for(let time=Date.parse(before)+86400000;time<Date.parse(after);time+=86400000){
+    const weekday=new Date(time).getUTCDay();
+    if(weekday!==0&&weekday!==6)return false;
+  }
+  return true;
+}
+function historicalFlow(prior,current) {
+  if(!prior)return {amount:D(current.totalAssets),daily:false};
+  if(prior.id===current.id)return {amount:D(0),daily:false};
+  if(prior.cumulativePnl!=null&&current.cumulativePnl!=null){
+    return {amount:D(current.totalAssets).minus(current.cumulativePnl)
+      .minus(D(prior.totalAssets).minus(prior.cumulativePnl)),daily:false};
+  }
+  // A daily return bridges only adjacent observations, never missing weekdays.
+  if(current.dailyPnl!=null&&consecutiveWeekdays(prior.date,current.date)){
+    return {amount:D(current.totalAssets).minus(prior.totalAssets).minus(current.dailyPnl),daily:true};
+  }
+  return null;
+}
 function inferHistoricalPerformance(span,scope) {
-  const complete=p=>p.parts.every(r=>r.cumulativePnl!==null&&r.cumulativePnl!==undefined);
-  const lastMissing=span.findLastIndex(p=>!complete(p));
-  const observed=span.slice(lastMissing+1);
+  const transitions=span.slice(1).map((after,index)=>{
+    const before=span[index];
+    if(before.parts.some(r=>!after.parts.some(p=>p.investment===r.investment)))return null;
+    const flows=after.parts.map(current=>historicalFlow(before.parts.find(r=>r.investment===current.investment),current));
+    if(flows.some(f=>!f))return null;
+    return {amount:flows.reduce((total,f,index)=>total.plus(f.amount.times(scope==='all'&&after.parts[index].currency==='USD'?after.fx:1)),D(0)),daily:flows.some(f=>f.daily)};
+  });
+  const firstIndex=transitions.findLastIndex(t=>!t)+1;
+  const observed=span.slice(firstIndex);
   if(observed.length<2)return null;
   const start=observed[0],end=observed.at(-1);
   let net=D(0),weighted=D(0);
   const duration=Math.max(1,days(start.date,end.date));
   for(let index=1;index<observed.length;index++) {
-    const before=observed[index-1],after=observed[index];
-    for(const current of after.parts) {
-      const prior=before.parts.find(r=>r.investment===current.investment);
-      const capital=r=>D(r.totalAssets).minus(r.cumulativePnl);
-      // A newly observed account enters at its full observed NAV. Its earlier
-      // accumulated profit predates this combined series and is not a return.
-      const flow=prior?capital(current).minus(capital(prior)):D(current.totalAssets);
-      const converted=flow.times(scope==='all'&&current.currency==='USD'?after.fx:1);
-      net=net.plus(converted);
-      weighted=weighted.plus(converted.times(days(after.date,end.date)/duration));
-    }
-    if(before.parts.some(r=>!after.parts.some(p=>p.investment===r.investment)))return null;
+    const after=observed[index],flow=transitions[firstIndex+index-1];
+    net=net.plus(flow.amount);
+    weighted=weighted.plus(flow.amount.times(days(after.date,end.date)/duration));
   }
   const profit=D(end.assets).minus(start.assets).minus(net);
   const denominator=D(start.assets).plus(weighted);
   return {start,profit,returnPercent:denominator.gt(0)?profit.div(denominator).times(100):null,net,
-    shortened:lastMissing>=0};
+    shortened:firstIndex>0,usesDaily:transitions.slice(firstIndex).some(t=>t.daily)};
 }
 
 export function periodStart(end,period) {
@@ -114,12 +132,16 @@ export function calculatePerformance(reports,rates,scope,now=new Date(),range={}
       if(inferred){start=inferred.start;profit=inferred.profit;pct=inferred.returnPercent;net=inferred.net;}
     }
     const current=month===now.toLocaleDateString('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit'}).slice(0,7);
+    const coverage=!valid&&!inferred?'insufficient':current?'ongoing':inferred?.shortened?'limited':
+      Boolean(month)&&boundary>month+'-01'?'filtered':!previous?'since_inception':'complete';
+    const coverageLabel=coverage==='insufficient'?'근거 부족':coverage==='ongoing'?`${Number(end.date.slice(5,7))}.${Number(end.date.slice(8))}까지`:
+      coverage==='filtered'?'선택 기간':coverage==='since_inception'||coverage==='limited'?`${Number(start.date.slice(5,7))}.${Number(start.date.slice(8))}부터`:null;
     const result={month,startDate:start.date,endDate:end.date,startAssets:start.assets,endAssets:end.assets,
       profit:text(profit),returnPercent:text(pct),cashflow:valid||inferred?text(net):null,
-      partial:!previous||(!valid&&!inferred)||Boolean(inferred?.shortened)||current||(Boolean(month)&&boundary>month+'-01'),
+      partial:coverage!=='complete',coverage,coverageLabel,
       estimated:profit!==null&&(Boolean(inferred)||hasFlow||inside.some(p=>p.quality!=='broker_reconciled')),
       method:inferred?'inferred_capital_dietz':hasFlow?'modified_dietz':'simple',
-      reason:inferred?(inferred.shortened?`누적 손익이 확인되는 ${start.date}부터 계산한 추정 수익입니다.`:'과거 누적 손익과 자산에서 원금 변화를 추정한 수익입니다.'):
+      reason:inferred?(inferred.shortened?`손익 근거가 확인되는 ${start.date}부터 계산한 추정 수익입니다.`:inferred.usesDaily?'누적 손익이 없는 날짜는 연속된 일별 손익과 자산 변화를 사용해 원금 변화를 추정했습니다.':'과거 누적 손익과 자산에서 원금 변화를 추정한 수익입니다.'):
         valid?null:'누적 손익 또는 입출금 원장이 부족해 수익을 계산할 수 없습니다.'};
     if(month)months.push(result);else summary=result;
   }

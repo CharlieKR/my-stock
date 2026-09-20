@@ -119,6 +119,24 @@ import XCTest
     XCTAssertEqual(chart.frame.minY,originalFrame.minY,accuracy:1)
     capture(app,"Chart-after-inspection")
   }
+  func testHorizontalSwipesChangeDailyReportsInBothTabs() {
+    let app=launch()
+    for tab in ["tab.SOXL", "tab.HYXL"] {
+      app.buttons[tab].tap()
+      let date=app.staticTexts["daily.selectedDate"]
+      XCTAssertTrue(date.waitForExistence(timeout:5))
+      let original=date.label
+      let left=app.coordinate(withNormalizedOffset:CGVector(dx:0.2,dy:0.46))
+      let right=app.coordinate(withNormalizedOffset:CGVector(dx:0.8,dy:0.46))
+      left.press(forDuration:0.05,thenDragTo:right)
+      XCTAssertNotEqual(date.label,original)
+      right.press(forDuration:0.05,thenDragTo:left)
+      XCTAssertEqual(date.label,original)
+      app.swipeUp()
+      app.swipeDown()
+      XCTAssertEqual(date.label,original)
+    }
+  }
   func testDarkAppearance() {
     let app = launch(extra: ["--dark"])
     capture(app, "07-Dark")

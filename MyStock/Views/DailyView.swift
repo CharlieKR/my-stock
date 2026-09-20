@@ -119,6 +119,14 @@ struct DailyView: View {
         }
       }
     }
+    .simultaneousGesture(
+      DragGesture(minimumDistance: 24).onEnded { value in
+        let horizontal = value.translation.width
+        guard abs(horizontal) >= 45, abs(horizontal) > abs(value.translation.height) * 1.5,
+          !showDates else { return }
+        moveDate(horizontal < 0 ? 1 : -1)
+      }
+    )
     .navigationTitle(investment.rawValue)
     .toolbar {
       ToolbarItem(placement: .topBarTrailing) {
@@ -161,6 +169,7 @@ struct DailyView: View {
       } label: {
         VStack(spacing: 3) {
           Text(ReportDate.label(report.date)).font(.subheadline.weight(.semibold))
+            .accessibilityIdentifier("daily.selectedDate")
           Text(
             !report.isValued && report.isOrderPlan
               ? "주문 예정"
