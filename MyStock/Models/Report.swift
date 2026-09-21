@@ -14,9 +14,10 @@ struct DailyReport: Codable, Identifiable, Sendable {
   enum CodingKeys: String, CodingKey {
     case id, investment, date, currency, status, totalAssets, stockValue, cash, cumulativePnl
     case cumulativeReturn, dailyPnl, dailyPnlLabel, details, rawText, slackURL, threadTS, updatedAt
-    case messages, quality, hasOrderPlan, plannedOrderCount
+    case messages, quality, hasOrderPlan, plannedOrderCount, quotes
   }
   var messages: [ThreadMessage]? = nil
+  var quotes: [ClosingQuote]? = nil
   let id: String
   let investment: Investment
   let date: String
@@ -60,6 +61,17 @@ struct DailyReport: Codable, Identifiable, Sendable {
     guard let totalAssets, let dailyPnl, totalAssets != dailyPnl else { return nil }
     return dailyPnl / (totalAssets - dailyPnl) * 100
   }
+}
+
+struct ClosingQuote: Codable, Identifiable, Sendable {
+  var id: String { symbol }
+  let symbol: String
+  let name: String
+  let date: String
+  let currency: String
+  let close: Double
+  let change: Double?
+  let changePercent: Double?
 }
 
 struct ReportDetail: Codable, Identifiable, Sendable {

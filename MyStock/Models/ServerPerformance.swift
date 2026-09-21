@@ -66,6 +66,7 @@ extension DailyReport {
     rawText=try c.decode(String.self,forKey:.rawText);slackURL=try c.decode(String.self,forKey:.slackURL)
     threadTS=try c.decode(String.self,forKey:.threadTS);updatedAt=try c.decode(String.self,forKey:.updatedAt)
     messages=try c.decodeIfPresent([ThreadMessage].self,forKey:.messages)
+    quotes=try c.decodeIfPresent([ClosingQuote].self,forKey:.quotes)
     quality=try c.decodeIfPresent(String.self,forKey:.quality)
     hasOrderPlan=try c.decodeIfPresent(Bool.self,forKey:.hasOrderPlan)
     plannedOrderCount=try c.decodeIfPresent(Int.self,forKey:.plannedOrderCount)

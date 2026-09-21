@@ -19,6 +19,9 @@ enum DemoData {
         let id = "\(investment.rawValue)-\(key)"
         reports.append(
           DailyReport(
+            quotes: investment == .soxl
+              ? [ClosingQuote(symbol: "SOXL", name: "SOXL", date: key, currency: "USD", close: 82.40, change: 1.40, changePercent: 1.73)]
+              : [ClosingQuote(symbol: "0193T0", name: "KODEX 하이닉스", date: key, currency: "KRW", close: 11200, change: 200, changePercent: 1.82)],
             id: id, investment: investment, date: key, currency: investment.currency,
             status: "settled",
             totalAssets: assets, stockValue: stock, cash: assets - stock, cumulativePnl: pnl,

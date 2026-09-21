@@ -39,13 +39,38 @@ const statusLabel=status=>{
   if(['CANCELED','CANCELLED','SKIPPED'].includes(value))return '취소';
   return status??'';
 };
+function dailyOrders(batch){
+  return (batch.orders??[]).filter(o=>(!o.us_date||o.us_date===batch.date)&&
+    (batch.investment!=='SOXL'||String(o.symbol).toUpperCase()==='SOXL'));
+}
+function dailyFills(batch){
+  const ids=new Set(dailyOrders(batch).filter(o=>o.id!=null).map(o=>String(o.id)));
+  return (batch.evidence?.fills??[]).filter(f=>{
+    const id=Array.isArray(f)?f[0]:f.order_id;
+    const qty=Number(Array.isArray(f)?f[1]?.matchedQty:f.qty);
+    return ids.has(String(id))&&Number.isFinite(qty)&&qty>0;
+  });
+}
+export function closingQuotes(quotes,date,investment){
+  const allowed=investment==='SOXL'?['SOXL']:['0193T0'];
+  const bySymbol=new Map();
+  for(const q of quotes??[]){
+    const symbol=String(q.symbol??'').replace(/\.KS$/u,'').toUpperCase();
+    if(q.date!==date||!allowed.includes(symbol)||!Number.isFinite(Number(q.close))||Number(q.close)<=0)continue;
+    const previous=Number(q.previousClose)>0?new Decimal(q.previousClose):null;
+    const close=new Decimal(q.close),change=previous?close.minus(previous):null;
+    bySymbol.set(symbol,{symbol,name:q.name??symbol,date,currency:investment==='SOXL'?'USD':'KRW',close:close.toNumber(),
+      change:change?.toNumber()??null,changePercent:change?change.div(previous).times(100).toNumber():null});
+  }
+  return allowed.flatMap(symbol=>bySymbol.has(symbol)?[bySymbol.get(symbol)]:[]);
+}
 function timelineMessages(day){
   const messages=[];
   for(const stage of ['plan','execution','settled']){
     const batches=day.filter(b=>b.stage===stage);
     if(!batches.length)continue;
     const date=batches.map(b=>b.capturedAt).sort().at(-1);
-    const orders=batches.flatMap(b=>(b.orders??[]).map(o=>({...o,currency:b.currency})));
+    const orders=batches.flatMap(b=>dailyOrders(b).map(o=>({...o,currency:b.currency,portfolioId:b.portfolioId})));
     if(stage==='plan'&&orders.length){
       messages.push({id:'plan-orders',date,text:'주문표 생성\n'+groupedOrderLines(orders,'예정').join('\n')});
     }
@@ -53,7 +78,7 @@ function timelineMessages(day){
       messages.push({id:'execution-orders',date,text:'주문 제출\n'+groupedOrderLines(orders,o=>statusLabel(o.status)||'제출').join('\n')});
     }
     if(stage==='settled'){
-      const fills=batches.flatMap(b=>(b.evidence?.fills??[]).map(f=>({fill:f,batch:b})));
+      const fills=batches.flatMap(b=>dailyFills(b).map(f=>({fill:f,batch:b})));
       const fillLines=fills.flatMap(({fill,batch})=>{
         if(Array.isArray(fill)){
           const order=batch.orders?.find(o=>String(o.id)===String(fill[0]));
@@ -63,13 +88,13 @@ function timelineMessages(day){
         return [orderLine({...fill,side:order?.side,symbol:fill.symbol??order?.symbol,order_type:order?.order_type,limit_price:fill.price},batch.currency,'체결 완료')];
       });
       const matched=new Map();
-      for(const {fill} of fills){
-        const id=String(Array.isArray(fill)?fill[0]:fill.order_id);
+      for(const {fill,batch} of fills){
+        const id=batch.portfolioId+':'+String(Array.isArray(fill)?fill[0]:fill.order_id);
         const qty=Number(Array.isArray(fill)?fill[1].matchedQty:fill.qty);
         matched.set(id,(matched.get(id)??0)+qty);
       }
       const unfilled=orders.flatMap(o=>{
-        const filled=matched.get(String(o.id))??Number(o.filled_qty??0);
+        const filled=matched.get(o.portfolioId+':'+String(o.id))??Number(o.filled_qty??0);
         const remaining=Number(o.qty??o.quantity??0)-filled;
         return remaining>0?[{...o,qty:remaining}]:[];
       });
@@ -118,11 +143,11 @@ export function normalizeBatches(batches,investment) {
     const pnl=complete?sum(present,'cumulativePnl'):null;
     const principal=complete?sum(present,'principal'):null;
     const capturedAt=day.map(b=>b.capturedAt).sort().at(-1);
-    const sourceDetails=day.filter(b=>b.stage==='settled').flatMap(b=>b.details.map(d=>({...d,id:b.portfolioId+':'+b.stage+':'+d.id})));
-    const settledFills=present.flatMap(b=>b.evidence?.fills??[]);
+    const sourceDetails=day.filter(b=>b.stage==='settled').flatMap(b=>b.details.filter(d=>d.title!=='체결').map(d=>({...d,id:b.portfolioId+':'+b.stage+':'+d.id})));
+    const settledOrderCount=present.reduce((count,b)=>count+new Set(dailyFills(b).map(f=>String(Array.isArray(f)?f[0]:f.order_id))).size,0);
     const details=[...sourceDetails];
     if(complete&&!details.some(d=>d.title==='체결'))details.push({id:investment+':settled:fills',title:'체결',
-      text:settledFills.length?`${settledFills.length}건 체결`:'없음'});
+      text:settledOrderCount?`${settledOrderCount}건 체결`:'없음'});
     const planBatches=day.filter(b=>b.stage==='plan');
     const plannedOrderCount=planBatches.reduce((count,b)=>count+(b.orders?.length??0),0);
     const quality=complete&&present.every(b=>b.quality==='broker_reconciled')?'broker_reconciled':'incomplete';
@@ -132,6 +157,7 @@ export function normalizeBatches(batches,investment) {
       totalAssets:nav,stockValue:complete?sum(present,'stockValue'):null,cash:complete?sum(present,'cash'):null,
       cumulativePnl:pnl,cumulativeReturn:pnl!==null&&principal!==null&&new Decimal(principal).gt(0)?new Decimal(pnl).div(principal).times(100).toString():null,
       dailyPnl:complete?sum(present,'dailyPnl'):null,dailyPnlLabel:'오늘 손익',details,
+      quotes:closingQuotes(present.flatMap(b=>b.quotes??[]),date,investment),
       rawText:details.map(d=>d.title+'\n'+d.text).join('\n\n'),slackURL:'',threadTS:'',updatedAt:capturedAt,
       quality,availableDate:new Date(valueDate).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}),
       cashEvents,cashflowCoverageFrom:coverage,
@@ -161,7 +187,7 @@ async function buildV2(){
   for(const s of states)for(const r of s.archive??[])historical.set(r.id,r);
   const legacy=[...historical.values()].map(r=>{
     const hasOrderPlan=r.hasOrderPlan??(r.status==='pending'&&(r.messages?.some(m=>/주문표|주문 계획/.test(m.text))||r.details.some(d=>/주문표|주문금액/.test(d.title+' '+d.text))));
-    return {...r,quality:'legacy_archive',cashEvents:[],cashflowCoverageFrom:null,hasOrderPlan:Boolean(hasOrderPlan),
+    return {...r,quotes:closingQuotes(r.quotes,r.date,r.investment),quality:'legacy_archive',cashEvents:[],cashflowCoverageFrom:null,hasOrderPlan:Boolean(hasOrderPlan),
       plannedOrderCount:r.plannedOrderCount??null,availableDate:r.date,slackURL:'',threadTS:'',
       details:[...r.details,{id:'archive',title:'보관 기록',text:'이전 리포트에서 보존한 과거 기록입니다.'}],messages:r.messages??[]};
   });

@@ -293,6 +293,25 @@ struct DailyView: View {
           }.font(.caption2).foregroundStyle(.secondary).monospacedDigit()
         }
       }
+      if let quotes = report.quotes?.filter({ $0.date == report.date && $0.symbol != "0194T0" }), !quotes.isEmpty {
+        Divider()
+        VStack(alignment: .leading, spacing: 12) {
+          Text("종가 · 전일 대비").font(.caption).foregroundStyle(.secondary)
+          ForEach(quotes) { quote in
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+              Text(quote.name).font(.subheadline.weight(.medium))
+              Spacer(minLength: 4)
+              VStack(alignment: .trailing, spacing: 4) {
+                Text(Format.money(quote.close, quote.currency))
+                  .font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
+                Text("\(Format.money(quote.change, quote.currency, signed: true)) (\(Format.percent(quote.changePercent)))")
+                  .font(.caption.weight(.medium)).foregroundStyle(Color.movement(quote.change))
+              }.monospacedDigit()
+            }.accessibilityElement(children: .combine)
+              .accessibilityIdentifier("daily.close.\(quote.symbol)")
+          }
+        }
+      }
     }
   }
 }

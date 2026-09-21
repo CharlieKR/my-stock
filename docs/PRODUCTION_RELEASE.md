@@ -2,6 +2,8 @@
 
 후속 수정: [과거 기록 복원 및 조회 개선](DATA_COVERAGE.md)에 6월 계산 보완, 누락 정산 10건 복원, 차트 반응 개선과 좌우 날짜 이동을 기록했다.
 
+2026-09-22: [일별 요약 및 종가 표시](DAILY_SUMMARY_FIX.md)에 RP/당일 SOXL 체결 정정, 종가와 전일 대비 표시, 과거 가격 보충 및 소스 배포를 기록했다.
+
 ## 배포 구조
 
 - iPhone SwiftUI 앱 → `https://my-stock-blue.vercel.app/v2/*` → 기존 lst/kst Supabase의 전용 `reporting` 스키마.

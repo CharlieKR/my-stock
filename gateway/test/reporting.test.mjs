@@ -2,11 +2,33 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
+import { latestBatchesSQL } from '../database.mjs';
 import { calculatePerformance, performanceWithPeriods, periodStart } from '../performance.mjs';
-import { normalizeBatches, mergeDailyReport } from '../reports-v2.mjs';
+import { normalizeBatches, mergeDailyReport, closingQuotes } from '../reports-v2.mjs';
 
 const report=(date,nav,extra={})=>({id:'SOXL-'+date,investment:'SOXL',date,currency:'USD',status:'settled',totalAssets:String(nav),quality:'broker_reconciled',cashEvents:[],cashflowCoverageFrom:'2026-01-01',...extra});
 const when=new Date('2026-04-01T12:00:00Z');
+test('corrected settlements choose numeric revision 11 over 9 at the same observation time',async()=>{
+  const db=new PGlite();
+  try {
+    await db.exec(`create schema reporting; create table reporting.publication_batches (
+      revision bigint, portfolio_id text, business_date date, stage text, captured_at timestamptz, investment text, payload jsonb);
+      insert into reporting.publication_batches select r,'soxl_live','2026-09-21','settled','2026-09-21T20:00:00Z','SOXL',jsonb_build_object('revision',r)
+      from unnest(array[9,10,11]) r;`);
+    const result=await db.query(latestBatchesSQL,['SOXL']);
+    assert.equal(result.rows.length,1);assert.equal(result.rows[0].revision,'11');
+    assert.equal(result.rows[0].payload.revision,11);
+  }finally{await db.close();}
+});
+test('closing prices match the selected market date, deduplicate portfolios and calculate percent units',()=>{
+  const quote={symbol:'SOXL',date:'2026-09-21',close:120,previousClose:100};
+  assert.deepEqual(closingQuotes([quote,quote,{...quote,symbol:'MU'},{...quote,date:'2026-09-20'}],'2026-09-21','SOXL'),
+    [{symbol:'SOXL',name:'SOXL',date:'2026-09-21',currency:'USD',close:120,change:20,changePercent:20}]);
+  assert.equal(closingQuotes([{...quote,previousClose:null}],'2026-09-21','SOXL')[0].changePercent,null);
+  assert.equal(closingQuotes([{...quote,close:0}],'2026-09-21','SOXL').length,0);
+  assert.equal(closingQuotes([{...quote,close:90}],'2026-09-21','SOXL')[0].changePercent,-10);
+  assert.deepEqual(closingQuotes([{...quote,symbol:'0193T0'},{...quote,symbol:'0194T0'}],'2026-09-21','HYXL').map(q=>q.symbol),['0193T0']);
+});
 test('rolling presets clamp months and include seven calendar days',()=>{
   assert.equal(periodStart('2026-09-18','week'),'2026-09-12');
   assert.equal(periodStart('2026-03-31','month'),'2026-03-01');
@@ -155,6 +177,23 @@ test('SOXL matched fill evidence avoids duplicating full fills as unfilled',()=>
   const text=normalizeBatches([source],'SOXL')[0].messages[0].text;
   assert.match(text,/10주 @ \$101 \/ \$1,010 체결 완료/);
   assert.doesNotMatch(text,/미체결|main/);
+});
+test('SOXL summary ignores historical, non-SOXL and zero fills and counts orders rather than fragments',()=>{
+  const source=batch({investment:'SOXL',portfolioId:'soxl_live',currency:'USD',details:[{id:'bad',title:'체결',text:'250건 체결'}],orders:[
+    {id:'a',symbol:'SOXL',us_date:'2026-09-18',side:'buy',qty:10,order_price:100},
+    {id:'zero',symbol:'SOXL',us_date:'2026-09-18',side:'buy',qty:3,order_price:90},
+    {id:'old',symbol:'SOXL',us_date:'2026-09-17',side:'buy',qty:99,order_price:80},
+    {id:'manual',symbol:'MU',us_date:'2026-09-18',side:'buy',qty:50,order_price:70}],
+    evidence:{fills:[['old',{matchedQty:99,matchedAmount:7920}],['manual',{matchedQty:50,matchedAmount:3500}],
+      ['a',{matchedQty:4,matchedAmount:400}],['a',{matchedQty:6,matchedAmount:600}],['zero',{matchedQty:0,matchedAmount:0}]]}});
+  const result=normalizeBatches([source],'SOXL')[0];
+  assert.equal(result.details.find(d=>d.title==='체결').text,'1건 체결');
+  assert.doesNotMatch(result.messages[0].text,/MU|99주|NaN|Infinity/);
+  assert.match(result.messages[0].text,/3주.*미체결/);
+  source.evidence.fills=source.evidence.fills.filter(f=>f[0]!=='a');
+  const empty=normalizeBatches([source],'SOXL')[0];
+  assert.equal(empty.details.find(d=>d.title==='체결').text,'없음');
+  assert.match(empty.messages[0].text,/체결 없음/);
 });
 test('execution updates preserve historical settlement and its independent fill result',()=>{
   const prior={...archived('2026-09-18',100,10),messages:[

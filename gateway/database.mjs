@@ -16,6 +16,9 @@ export function databasePool(connectionString) {
   return pools.get(connectionString);
 }
 export const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+export const latestBatchesSQL = `select distinct on (b.portfolio_id,b.business_date,b.stage) b.payload,b.revision::text as revision
+  from reporting.publication_batches b where b.investment=$1
+  order by b.portfolio_id,b.business_date,b.stage,b.captured_at desc,b.revision desc`;
 export async function sourceDatabase(investment) {
   const connection = process.env[investment==='SOXL'?'MY_STOCK_LST_DATABASE_URL':'MY_STOCK_KST_DATABASE_URL'];
   if(!connection) return {investment,status:'unconfigured',message:'DB 연결 준비 중 · 보관된 과거 기록을 표시합니다.',batches:[],rates:[]};
@@ -24,9 +27,7 @@ export async function sourceDatabase(investment) {
     await client.query('begin isolation level repeatable read read only');
     const role=await client.query('select current_user as name');
     if(role.rows[0].name!=='my_stock_reader') throw new Error('Dedicated reader role required');
-    const result=await client.query(`select distinct on (portfolio_id,business_date,stage) payload,revision::text
-      from reporting.publication_batches where investment=$1
-      order by portfolio_id,business_date,stage,captured_at desc,revision desc`,[investment]);
+    const result=await client.query(latestBatchesSQL,[investment]);
     const rates=investment==='SOXL'?await client.query('select rate_date::text as date,usd_krw::text as "usdKrw",available_at as "availableAt",provider from reporting.fx_rates order by rate_date'): {rows:[]};
     const archive=await client.query('select payload from reporting.legacy_reports where investment=$1 order by business_date',[investment]);
     await client.query('commit');

@@ -38,6 +38,17 @@ import XCTest
     app.swipeDown()
     expectBar(app, "expanded")
   }
+  func testDailyClosingQuotes() {
+    let app = launch()
+    app.swipeUp()
+    XCTAssertTrue(app.descendants(matching: .any)["daily.close.SOXL"].waitForExistence(timeout: 5))
+    capture(app, "SOXL-closing-price")
+    app.buttons["tab.HYXL"].tap()
+    app.swipeUp()
+    XCTAssertTrue(app.descendants(matching: .any)["daily.close.0193T0"].waitForExistence(timeout: 5))
+    XCTAssertFalse(app.descendants(matching: .any)["daily.close.0194T0"].exists)
+    capture(app, "HYXL-closing-prices")
+  }
   func testCalendarReportNavigationAndSettings() {
     let app = launch()
     app.buttons["리포트 날짜 선택"].tap()
