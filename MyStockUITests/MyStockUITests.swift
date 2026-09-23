@@ -31,7 +31,7 @@ import XCTest
       CGVector(dx: app.frame.width / 2, dy: app.frame.height - 49))
     otherTab.tap()
     expectBar(app, "expanded")
-    XCTAssertTrue(app.staticTexts["하이닉스 · ACE · KODEX"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.staticTexts["국내 주식 · KRW"].waitForExistence(timeout: 5))
     capture(app, "03-HYXL")
     app.swipeUp()
     expectBar(app, "compact")

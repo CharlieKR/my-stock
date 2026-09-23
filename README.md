@@ -29,7 +29,7 @@ node --env-file=/private/path/reader.env gateway/server.mjs
 
 배포용 앱의 API 주소는 Xcode 빌드 설정 MY_STOCK_API_URL에 HTTPS 주소를 지정해 고정합니다. 주소는 비밀이 아니며 Info.plist의 MyStockAPIURL로 전달됩니다. 기기의 읽기 키는 설치/초기 설정 때 Keychain에 준비해야 합니다. 이미 설치된 개인용 앱은 기존 Keychain 키를 유지합니다. 새 기기의 초기 키 설정은 배포 준비 항목이며 키를 없애거나 비인증 DB 조회로 대체하지 않습니다. 운영 API 배포 전에는 개발용 로컬 서버를 계속 사용합니다.
 
-시뮬레이터 설치·연결은 bash scripts/run-simulator.sh로 실행할 수 있습니다. 이 스크립트는 Codex 내부 브라우저에서 실행 화면을 볼 수 있도록 http://localhost:3200/의 읽기 전용 화면도 시작합니다.
+시뮬레이터 설치·연결은 bash scripts/run-simulator.sh로 실행할 수 있습니다. Codex 내부 브라우저에서 직접 터치·스와이프하려면 별도 터미널에서 스크립트가 출력한 `npx --yes serve-sim@latest <시뮬레이터 UDID>`를 실행하고, 표시된 로컬 주소를 Codex 내부 브라우저에서 엽니다. `scripts/serve-sim.py`는 이전의 읽기 전용 화면 미러이며 조작 기능이 없습니다.
 
 ## 데이터와 캐시
 

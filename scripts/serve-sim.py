@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Show the booted My Stock iOS simulator inside Codex's local browser."""
+"""Show read-only screenshots from the booted iOS simulator in a local browser."""
 
 import argparse
 import json
@@ -13,15 +13,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PAGE = """<!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>My Stock · iPhone Simulator</title>
+<title>My Stock · Simulator Mirror</title>
 <style>
 *{box-sizing:border-box}body{margin:0;background:#101114;color:#f5f5f7;font:14px -apple-system,BlinkMacSystemFont,sans-serif}
 main{min-height:100vh;display:grid;place-items:center;padding:18px}.viewer{width:min(100%,460px)}
 header{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;color:#b5b7c0}
 strong{color:#f5f5f7;font-size:15px}#state{font-size:12px}.phone{width:100%;display:block;border-radius:35px;border:5px solid #2e3036;background:#17191d;box-shadow:0 24px 70px #0009}
 footer{text-align:center;color:#8e919c;font-size:12px;margin-top:12px}
-</style></head><body><main><div class="viewer"><header><strong>My Stock · iPhone Simulator</strong><span id="state">연결 중</span></header>
-<img id="screen" class="phone" alt="iPhone 시뮬레이터 화면"><footer>실행 중인 iOS 시뮬레이터의 실시간 화면</footer></div></main>
+</style></head><body><main><div class="viewer"><header><strong>My Stock · 시뮬레이터 화면 미러</strong><span id="state">연결 중</span></header>
+<img id="screen" class="phone" alt="iPhone 시뮬레이터 화면"><footer>읽기 전용 화면입니다. 터치와 스와이프는 시뮬레이터에서 조작하세요.</footer></div></main>
 <script>
 const screen=document.getElementById('screen'),state=document.getElementById('state');
 async function refresh(){try{const response=await fetch('/frame.jpg?t='+Date.now(),{cache:'no-store'});if(!response.ok)throw Error();

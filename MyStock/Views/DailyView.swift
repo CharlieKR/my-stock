@@ -4,6 +4,7 @@ import UIKit
 struct DailyView: View {
   let investment: Investment
   @Environment(ReportStore.self) private var store
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @AppStorage("hideAmounts") private var hidden = false
   @State private var selectedDate: String?
   @State private var showDates = false
@@ -11,7 +12,9 @@ struct DailyView: View {
   @State private var toast: String?
   private var reports: [DailyReport] { store.reports(for: investment) }
   private var report: DailyReport? {
-    if let selectedDate { return reports.first { $0.date == selectedDate } }
+    if let selectedDate, let selected = reports.first(where: { $0.date == selectedDate }) {
+      return selected
+    }
     return reports.first { $0.isValued } ?? reports.first
   }
   private var upcomingOrder: DailyReport? {
@@ -21,6 +24,50 @@ struct DailyView: View {
     return reports.first(where: { $0.isOrderPlan && $0.date > latestSettled.date })
   }
   var body: some View {
+    Group {
+      if reports.isEmpty {
+        page(nil)
+      } else {
+        // Oldest to newest keeps a leftward swipe moving toward the next date.
+        TabView(selection: Binding(
+          get: { report?.date ?? reports[0].date },
+          set: { selectedDate = $0 }
+        )) {
+          ForEach(reports.reversed()) { day in
+            page(day).tag(day.date)
+          }
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+      }
+    }
+    .navigationTitle(investment.rawValue)
+    .toolbar {
+      ToolbarItem(placement: .topBarTrailing) {
+        Button {
+          calendarDate = report?.day ?? Date()
+          showDates = true
+        } label: {
+          Image(systemName: "calendar")
+        }.accessibilityLabel("리포트 날짜 선택").disabled(reports.isEmpty)
+      }
+    }
+    .sheet(isPresented: $showDates) { datesSheet }
+    .overlay(alignment:.top) {
+      if let toast {
+        Label(toast,systemImage:"calendar.badge.exclamationmark")
+          .font(.subheadline).padding(.horizontal,18).padding(.vertical,14)
+          .glassEffect(.regular,in:.capsule).padding(.top,8)
+          .accessibilityIdentifier("daily.noDataToast")
+          .allowsHitTesting(false)
+      }
+    }
+    .task(id:toast) {
+      guard toast != nil else { return }
+      do { try await Task.sleep(for:.seconds(3));toast=nil } catch { }
+    }
+  }
+
+  private func page(_ pageReport: DailyReport?) -> some View {
     Canvas {
       HStack {
         Text(investment.subtitle).font(.subheadline).foregroundStyle(.secondary)
@@ -39,7 +86,7 @@ struct DailyView: View {
       {
         Notice(text: source.message, symbol: "exclamationmark.circle")
       }
-      if let report {
+      if let report = pageReport {
         datePicker(report)
         if let upcomingOrder, upcomingOrder.id != report.id {
           upcomingOrderButton(upcomingOrder)
@@ -119,40 +166,7 @@ struct DailyView: View {
         }
       }
     }
-    .simultaneousGesture(
-      DragGesture(minimumDistance: 24).onEnded { value in
-        let horizontal = value.translation.width
-        guard abs(horizontal) >= 45, abs(horizontal) > abs(value.translation.height) * 1.5,
-          !showDates else { return }
-        moveDate(horizontal < 0 ? 1 : -1)
-      }
-    )
-    .navigationTitle(investment.rawValue)
-    .toolbar {
-      ToolbarItem(placement: .topBarTrailing) {
-        Button {
-          calendarDate = report?.day ?? Date()
-          showDates = true
-        } label: {
-          Image(systemName: "calendar")
-        }.accessibilityLabel("리포트 날짜 선택").disabled(reports.isEmpty)
-      }
-    }
     .refreshable { await store.refresh() }
-    .sheet(isPresented: $showDates) { datesSheet }
-    .overlay(alignment:.top) {
-      if let toast {
-        Label(toast,systemImage:"calendar.badge.exclamationmark")
-          .font(.subheadline).padding(.horizontal,18).padding(.vertical,14)
-          .glassEffect(.regular,in:.capsule).padding(.top,8)
-          .accessibilityIdentifier("daily.noDataToast")
-          .allowsHitTesting(false)
-      }
-    }
-    .task(id:toast) {
-      guard toast != nil else { return }
-      do { try await Task.sleep(for:.seconds(3));toast=nil } catch { }
-    }
   }
 
   private func datePicker(_ report: DailyReport) -> some View {
@@ -189,7 +203,7 @@ struct DailyView: View {
   }
   private func upcomingOrderButton(_ plan: DailyReport) -> some View {
     Button {
-      selectedDate = plan.date
+      selectDate(plan.date)
     } label: {
       HStack(spacing: 12) {
         Image(systemName: "calendar.badge.clock")
@@ -220,7 +234,19 @@ struct DailyView: View {
     guard let report, let index = reports.firstIndex(where: { $0.id == report.id }),
       reports.indices.contains(index - direction)
     else { return }
-    selectedDate = reports[index - direction].date
+    selectDate(reports[index - direction].date)
+  }
+  private func selectDate(_ date: String) {
+    let currentIndex = report.flatMap { current in
+      reports.firstIndex(where: { $0.id == current.id })
+    }
+    let targetIndex = reports.firstIndex(where: { $0.date == date })
+    if !reduceMotion, let currentIndex, let targetIndex,
+      abs(currentIndex - targetIndex) == 1 {
+      withAnimation(.easeInOut(duration: 0.28)) { selectedDate = date }
+    } else {
+      selectedDate = date
+    }
   }
   private var datesSheet: some View {
     NavigationStack {

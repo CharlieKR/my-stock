@@ -23,14 +23,7 @@ env['SIMCTL_CHILD_MY_STOCK_SERVER'] = 'http://127.0.0.1:8787'
 env['SIMCTL_CHILD_MY_STOCK_KEY'] = key.read_text().strip()
 subprocess.run(['xcrun', 'simctl', 'launch', os.environ['MY_STOCK_LAUNCH_DEVICE'], 'com.charlie.mystock'], env=env, check=True)
 PY
-if ! lsof -iTCP:3200 -sTCP:LISTEN -t >/dev/null; then
-  launchctl remove com.charlie.mystock.serve-sim 2>/dev/null || true
-  launchctl submit -l com.charlie.mystock.serve-sim \
-    -o "$PWD/.local/serve-sim.log" -e "$PWD/.local/serve-sim.err" \
-    -- "$(command -v python3)" -B "$PWD/scripts/serve-sim.py" --device "$device"
-fi
-if [ -d /Applications/Xcode.app/Contents/Developer/Applications/Simulator.app ]; then
-  open /Applications/Xcode.app/Contents/Developer/Applications/Simulator.app
-fi
 echo "My Stock is running on simulator $device."
-echo "Codex viewer: http://localhost:3200/"
+echo "For an interactive Codex browser preview, run in a separate terminal:"
+echo "npx --yes serve-sim@latest $device"
+echo "Open the local URL printed by serve-sim in the Codex in-app browser."
