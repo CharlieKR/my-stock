@@ -135,3 +135,25 @@ func submissionHeaderDoesNotTreatRejectedOrPendingOrdersAsComplete(body: String,
   let activity = OrderActivity(id: "orders", message: message, plan: nil)
   #expect(activity.submissionStatus == expected)
 }
+
+@Test func submissionWithCancelledRowsIsCompleteAfterFillResult() {
+  let submission = ThreadMessage(
+    id: "execution",
+    text: "주문 제출\n- 매도 KODEX 2,127주 @ ₩11,590 / ₩24,651,930 LOC · 체결 완료\n- 매수 KODEX 2,464주 @ ₩11,540 / ₩28,434,560 LOC · 취소",
+    date: "2026-09-23T06:25:16Z")
+  let result = ThreadMessage(
+    id: "result",
+    text: "체결 결과\n- 매도 KODEX 2,127주 @ ₩11,865 / ₩25,236,855 LOC · 체결 완료\n\n미체결/거부\n- 매수 KODEX 2,464주 @ ₩11,540 / ₩28,434,560 LOC · 취소",
+    date: "2026-09-23T07:26:25Z")
+  let pending = OrderActivity.timeline([submission])
+  #expect(pending[0].submissionStatus == "일부 제출")
+  let finished = OrderActivity.timeline([submission, result])
+  #expect(finished[0].submissionStatus == "완료")
+  #expect(finished[0].orders[1].isUnfilled)
+  #expect(finished[1].message.activityTitle == "체결 결과")
+
+  let cancelledOnly = ThreadMessage(
+    id: "cancelled", text: "주문 제출\n- 매수 KODEX 10주 @ ₩10,000 / ₩100,000 LOC · 취소",
+    date: submission.date)
+  #expect(OrderActivity.timeline([cancelledOnly, result])[0].submissionStatus == "완료")
+}

@@ -19,6 +19,14 @@ struct OrderActivity: Identifiable {
   let id: String
   let message: ThreadMessage
   let plan: ThreadMessage?
+  let result: ThreadMessage?
+
+  init(id: String, message: ThreadMessage, plan: ThreadMessage?, result: ThreadMessage? = nil) {
+    self.id = id
+    self.message = message
+    self.plan = plan
+    self.result = result
+  }
 
   var isSubmission: Bool { message.activityTitle == "주문 제출" }
   var showsSubmissionSummary: Bool { isSubmission && message.orderPreviews.isEmpty }
@@ -29,10 +37,14 @@ struct OrderActivity: Identifiable {
       let summary = message.body.components(separatedBy: .newlines).first ?? ""
       return summary == "제출 완료" ? "완료" : summary.isEmpty ? "확인 대기" : summary
     }
-    if rows.contains(where: \.isUnfilled) { return "확인 필요" }
     let completed = rows.filter {
       ["제출 완료", "체결 완료"].contains(where: $0.type.contains)
     }.count
+    if rows.contains(where: \.isUnfilled) {
+      // A later order result closes the submission step, even if rows were cancelled.
+      if result != nil { return "완료" }
+      return completed > 0 ? "일부 제출" : "확인 필요"
+    }
     if completed == rows.count { return "완료" }
     return completed > 0 ? "일부 제출" : "확인 대기"
   }
@@ -53,11 +65,12 @@ struct OrderActivity: Identifiable {
     let messages = messages.filter(\.isOrderActivity).sorted { $0.date < $1.date }
     let plan = messages.last { $0.activityTitle == "주문표" }
     let submission = messages.last { $0.activityTitle == "주문 제출" }
+    let result = messages.last { $0.activityTitle == "체결 결과" }
     var activities = messages.filter { $0.activityTitle == "체결 결과" }.map {
       OrderActivity(id: $0.id, message: $0, plan: nil)
     }
     if let current = submission ?? plan {
-      activities.append(OrderActivity(id: "daily-orders", message: current, plan: plan))
+      activities.append(OrderActivity(id: "daily-orders", message: current, plan: plan, result: result))
     }
     return activities.sorted { $0.message.date < $1.message.date }
   }
