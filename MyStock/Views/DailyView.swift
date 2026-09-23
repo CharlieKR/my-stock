@@ -17,24 +17,39 @@ struct DailyView: View {
     }
     return reports.first { $0.isValued } ?? reports.first
   }
-  private var upcomingOrder: DailyReport? {
+  private func upcomingOrder(in reports: [DailyReport]) -> DailyReport? {
     guard let latestSettled = reports.first(where: { $0.isValued }) else {
       return reports.first(where: { $0.isOrderPlan })
     }
     return reports.first(where: { $0.isOrderPlan && $0.date > latestSettled.date })
   }
   var body: some View {
-    Group {
+    let reports = reports
+    let pages = Array(reports.reversed())
+    let availableDates = Set(reports.map(\.date))
+    let latestSettledDate = reports.first(where: { $0.isValued })?.date
+    let defaultDate = latestSettledDate ?? reports.first?.date ?? ""
+    let upcomingOrder = upcomingOrder(in: reports)
+    return Group {
       if reports.isEmpty {
         page(nil)
       } else {
         // Oldest to newest keeps a leftward swipe moving toward the next date.
         TabView(selection: Binding(
-          get: { report?.date ?? reports[0].date },
+          get: {
+            if let selectedDate, availableDates.contains(selectedDate) { return selectedDate }
+            return defaultDate
+          },
           set: { selectedDate = $0 }
         )) {
-          ForEach(reports.reversed()) { day in
-            page(day).tag(day.date)
+          ForEach(Array(pages.enumerated()), id: \.element.id) { index, day in
+            page(
+              day,
+              previousDate: index > 0 ? pages[index - 1].date : nil,
+              nextDate: index + 1 < pages.count ? pages[index + 1].date : nil,
+              latestSettledDate: latestSettledDate,
+              upcomingOrder: upcomingOrder
+            ).tag(day.date)
           }
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
@@ -67,8 +82,11 @@ struct DailyView: View {
     }
   }
 
-  private func page(_ pageReport: DailyReport?) -> some View {
-    Canvas {
+  private func page(
+    _ pageReport: DailyReport?, previousDate: String? = nil, nextDate: String? = nil,
+    latestSettledDate: String? = nil, upcomingOrder: DailyReport? = nil
+  ) -> some View {
+    Canvas(resetTabBarOnAppear: false) {
       HStack {
         Text(investment.subtitle).font(.subheadline).foregroundStyle(.secondary)
         Spacer()
@@ -87,7 +105,9 @@ struct DailyView: View {
         Notice(text: source.message, symbol: "exclamationmark.circle")
       }
       if let report = pageReport {
-        datePicker(report)
+        datePicker(
+          report, previousDate: previousDate, nextDate: nextDate,
+          latestSettledDate: latestSettledDate)
         if let upcomingOrder, upcomingOrder.id != report.id {
           upcomingOrderButton(upcomingOrder)
         }
@@ -169,13 +189,16 @@ struct DailyView: View {
     .refreshable { await store.refresh() }
   }
 
-  private func datePicker(_ report: DailyReport) -> some View {
+  private func datePicker(
+    _ report: DailyReport, previousDate: String?, nextDate: String?,
+    latestSettledDate: String?
+  ) -> some View {
     HStack(spacing: 6) {
       Button {
-        moveDate(-1)
+        if let previousDate { selectDate(previousDate) }
       } label: {
         Image(systemName: "chevron.left").frame(width: 44, height: 44)
-      }.disabled(!canMove(-1)).accessibilityLabel("이전 리포트")
+      }.disabled(previousDate == nil).accessibilityLabel("이전 리포트")
       Spacer(minLength: 0)
       Button {
         calendarDate = report.day
@@ -187,17 +210,17 @@ struct DailyView: View {
           Text(
             !report.isValued && report.isOrderPlan
               ? "주문 예정"
-              : report.date == reports.first(where: { $0.isValued })?.date
+              : report.date == latestSettledDate
                 ? "최근 정산일" : String(report.date.prefix(4))
           ).font(.caption2).foregroundStyle(.secondary)
         }.padding(.vertical, 8)
       }.foregroundStyle(.primary)
       Spacer(minLength: 0)
       Button {
-        moveDate(1)
+        if let nextDate { selectDate(nextDate) }
       } label: {
         Image(systemName: "chevron.right").frame(width: 44, height: 44)
-      }.disabled(!canMove(1)).accessibilityLabel("다음 리포트")
+      }.disabled(nextDate == nil).accessibilityLabel("다음 리포트")
     }
     .padding(.horizontal, 4).glassEffect(.regular, in: .capsule)
   }
@@ -223,18 +246,6 @@ struct DailyView: View {
     }
     .buttonStyle(.plain)
     .accessibilityIdentifier("daily.upcomingOrder")
-  }
-  private func canMove(_ direction: Int) -> Bool {
-    guard let report, let index = reports.firstIndex(where: { $0.id == report.id }) else {
-      return false
-    }
-    return reports.indices.contains(index - direction)
-  }
-  private func moveDate(_ direction: Int) {
-    guard let report, let index = reports.firstIndex(where: { $0.id == report.id }),
-      reports.indices.contains(index - direction)
-    else { return }
-    selectDate(reports[index - direction].date)
   }
   private func selectDate(_ date: String) {
     let currentIndex = report.flatMap { current in

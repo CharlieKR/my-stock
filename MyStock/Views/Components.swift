@@ -33,17 +33,25 @@ extension Color {
 }
 extension Investment { var tint: Color { self == .soxl ? .brandAccent : .hyxlAccent } }
 
-enum Format {
+@MainActor enum Format {
+  private static let usdFormatter = makeFormatter(fractionDigits: 2)
+  private static let krwFormatter = makeFormatter(fractionDigits: 0)
+
+  private static func makeFormatter(fractionDigits: Int) -> NumberFormatter {
+    let formatter = NumberFormatter()
+    formatter.numberStyle = .decimal
+    formatter.locale = Locale(identifier: "en_US")
+    formatter.minimumFractionDigits = fractionDigits
+    formatter.maximumFractionDigits = fractionDigits
+    return formatter
+  }
+
   static func money(
     _ value: Double?, _ currency: String, signed: Bool = false, hidden: Bool = false
   ) -> String {
     if hidden { return "••••••" }
     guard let value, value.isFinite else { return "—" }
-    let formatter = NumberFormatter()
-    formatter.numberStyle = .decimal
-    formatter.locale = Locale(identifier: "en_US")
-    formatter.minimumFractionDigits = currency == "USD" ? 2 : 0
-    formatter.maximumFractionDigits = currency == "USD" ? 2 : 0
+    let formatter = currency == "USD" ? usdFormatter : krwFormatter
     let sign = value < 0 ? "−" : signed && value > 0 ? "+" : ""
     return sign + (currency == "USD" ? "$" : "₩")
       + (formatter.string(from: NSNumber(value: abs(value))) ?? "—")
@@ -60,6 +68,7 @@ enum Format {
 }
 
 struct Canvas<Content: View>: View {
+  var resetTabBarOnAppear = true
   @ViewBuilder var content: Content
   var body: some View {
     ScrollView {
@@ -68,7 +77,7 @@ struct Canvas<Content: View>: View {
       ).padding(.bottom, 32).frame(maxWidth: 680).frame(maxWidth: .infinity)
     }
     .background(Color(.systemGroupedBackground))
-    .modifier(TabBarScrollBehavior())
+    .modifier(TabBarScrollBehavior(resetOnAppear: resetTabBarOnAppear))
   }
 }
 struct Surface<Content: View>: View {

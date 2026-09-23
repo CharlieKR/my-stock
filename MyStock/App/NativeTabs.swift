@@ -114,6 +114,7 @@ private struct ScrollSample: Equatable {
 }
 
 struct TabBarScrollBehavior: ViewModifier {
+  var resetOnAppear = true
   @Environment(TabBarState.self) private var tabs
   @State private var tracker = TabBarScrollTracker()
   @State private var interacting = false
@@ -140,7 +141,7 @@ struct TabBarScrollBehavior: ViewModifier {
       }
       .onAppear {
         tracker = TabBarScrollTracker()
-        tabs.onAppear?()
+        if resetOnAppear { tabs.onAppear?() }
       }
   }
 }
