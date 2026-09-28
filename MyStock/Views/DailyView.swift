@@ -6,13 +6,17 @@ struct DailyView: View {
   @Environment(ReportStore.self) private var store
   @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @AppStorage("hideAmounts") private var hidden = false
-  @State private var selectedDate: String?
+  @AppStorage private var selectedDate: String
   @State private var showDates = false
   @State private var calendarDate = Date()
   @State private var toast: String?
+  init(investment: Investment) {
+    self.investment = investment
+    _selectedDate = AppStorage(wrappedValue: "", "viewer.daily.\(investment.rawValue).date")
+  }
   private var reports: [DailyReport] { store.reports(for: investment) }
   private var report: DailyReport? {
-    if let selectedDate, let selected = reports.first(where: { $0.date == selectedDate }) {
+    if let selected = reports.first(where: { $0.date == selectedDate }) {
       return selected
     }
     return reports.first { $0.isValued } ?? reports.first
@@ -37,7 +41,7 @@ struct DailyView: View {
         // Oldest to newest keeps a leftward swipe moving toward the next date.
         TabView(selection: Binding(
           get: {
-            if let selectedDate, availableDates.contains(selectedDate) { return selectedDate }
+            if availableDates.contains(selectedDate) { return selectedDate }
             return defaultDate
           },
           set: { selectedDate = $0 }
@@ -54,6 +58,10 @@ struct DailyView: View {
         }
         .tabViewStyle(.page(indexDisplayMode: .never))
       }
+    }
+    .onChange(of: availableDates, initial: true) { _, dates in
+      // Wait for data before replacing a restored date. Removed plans fall back safely.
+      if !dates.isEmpty && !dates.contains(selectedDate) { selectedDate = defaultDate }
     }
     .navigationTitle(investment.rawValue)
     .toolbar {
@@ -161,9 +169,7 @@ struct DailyView: View {
           }
         }
         ThreadSection(report: report)
-        NavigationLink {
-          ReportView(initialScope: investment == .soxl ? .soxl : .hyxl)
-        } label: {
+        NavigationLink(value: "report") {
           HStack {
             Label("월별 성과 보기", systemImage: "chart.bar.doc.horizontal").font(
               .subheadline.weight(.medium))
@@ -361,7 +367,15 @@ struct ThreadSection: View {
   @State private var error: String?
   @State private var loading = false
   @State private var activeID = ""
-  @State private var expandedIDs: Set<String> = []
+  @AppStorage private var expandedCardIDs: String
+  init(report: DailyReport) {
+    self.report = report
+    _expandedCardIDs = AppStorage(wrappedValue: "", "viewer.daily.\(report.id).expanded")
+  }
+  private var expandedIDs: Set<String> {
+    get { Set(expandedCardIDs.split(separator: "\n").map(String.init)) }
+    nonmutating set { expandedCardIDs = newValue.sorted().joined(separator: "\n") }
+  }
   private var activities: [OrderActivity] {
     OrderActivity.timeline(thread?.messages ?? [])
   }
@@ -472,6 +486,7 @@ struct ThreadSection: View {
           }
         }
       }.tint(.secondary)
+        .accessibilityIdentifier("order.activity.\(activity.id)")
     }
   }
 }

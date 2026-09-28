@@ -84,6 +84,11 @@ private struct ReportDiskCache: Codable {
     }
     #if DEBUG
       if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+        if ProcessInfo.processInfo.arguments.contains("--reset-viewer-state") {
+          for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("viewer.") {
+            UserDefaults.standard.removeObject(forKey: key)
+          }
+        }
         UserDefaults.standard.set(false, forKey: "hideAmounts")
         UserDefaults.standard.set(
           ProcessInfo.processInfo.arguments.contains("--dark") ? "dark" : "system",

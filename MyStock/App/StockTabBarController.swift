@@ -4,6 +4,7 @@ import UIKit
 // Adapted from appchart AppChartHost.swift: native glass, three-icon compaction,
 // direct compact hit testing, press/slide gestures, and accessibility fallbacks.
 final class StockTabBarController: UITabBarController, UITabBarControllerDelegate {
+  var onSelectionChange: ((Int) -> Void)?
   private(set) var isCompact = false
   private var compactTouch: CompactTabTouch?
   private weak var compactSelectionDestination: UIViewController?
@@ -142,6 +143,7 @@ final class StockTabBarController: UITabBarController, UITabBarControllerDelegat
     if index != selectedIndex {
       compactSelectionDestination = keepingCompact ? controllers[index] : nil
       selectedIndex = index
+      onSelectionChange?(index)
     }
     updateTint()
     view.layoutIfNeeded()
@@ -218,6 +220,7 @@ final class StockTabBarController: UITabBarController, UITabBarControllerDelegat
   func tabBarController(
     _ tabBarController: UITabBarController, didSelect viewController: UIViewController
   ) {
+    onSelectionChange?(selectedIndex)
     updateTint()
   }
 

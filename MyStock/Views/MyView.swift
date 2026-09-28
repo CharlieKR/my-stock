@@ -83,9 +83,7 @@ struct MyView: View {
           Notice(text: "두 투자 리포트와 날짜별 환율이 모이면 전체 자산이 표시됩니다.")
         }
       }
-      NavigationLink {
-        ReportView(initialScope: .all)
-      } label: {
+      NavigationLink(value: "report") {
         HStack(spacing: 16) {
           Image(systemName: "chart.bar.doc.horizontal").font(.title2).foregroundStyle(
             Color.brandAccent
@@ -120,9 +118,7 @@ struct MyView: View {
             .accessibilityIdentifier("theme.picker")
           }
           Divider()
-          NavigationLink {
-            SettingsView()
-          } label: {
+          NavigationLink(value: "settings") {
             HStack {
               Label("앱 설정", systemImage: "slider.horizontal.3")
               Spacer()

@@ -10,15 +10,16 @@ import UIKit
 struct NativeTabs: UIViewControllerRepresentable {
   let store: ReportStore
   let appearance: AppAppearance
+  @AppStorage("viewer.selectedTab") private var selectedTab = 0
   func makeUIViewController(context: Context) -> StockTabBarController {
     let controller = StockTabBarController()
     controller.overrideUserInterfaceStyle = appearance.interfaceStyle
     controller.loadViewIfNeeded()
     let states = (0..<3).map { _ in TabBarState() }
     let contents: [AnyView] = [
-      AnyView(NavigationStack { DailyView(investment: .soxl) }),
-      AnyView(NavigationStack { DailyView(investment: .hyxl) }),
-      AnyView(NavigationStack { MyView() }),
+      AnyView(TabRootScreen(investment: .soxl)),
+      AnyView(TabRootScreen(investment: .hyxl)),
+      AnyView(TabRootScreen(investment: nil)),
     ]
     let names = ["SOXL", "HYXL", "My"]
     let images = [
@@ -48,12 +49,45 @@ struct NativeTabs: UIViewControllerRepresentable {
       host.tabBarItem.accessibilityIdentifier = "tab.\(names[index])"
       return host
     }
+    controller.selectedIndex = (0..<contents.count).contains(selectedTab) ? selectedTab : 0
+    let selection = $selectedTab
+    controller.onSelectionChange = { selection.wrappedValue = $0 }
     controller.updateTint()
     return controller
   }
   func updateUIViewController(_ controller: StockTabBarController, context: Context) {
     controller.overrideUserInterfaceStyle = appearance.interfaceStyle
     controller.updateTint()
+  }
+}
+
+/// Each tab restores its own top-level destination independently.
+private struct TabRootScreen: View {
+  let investment: Investment?
+  @State private var path: [String]
+  private var storageKey: String { "viewer.navigation.\(investment?.rawValue ?? "My")" }
+  init(investment: Investment?) {
+    self.investment = investment
+    let saved = UserDefaults.standard.string(forKey: "viewer.navigation.\(investment?.rawValue ?? "My")") ?? ""
+    _path = State(initialValue: ["report", "settings"].contains(saved) ? [saved] : [])
+  }
+  private var initialScope: ReportScope {
+    investment == .soxl ? .soxl : investment == .hyxl ? .hyxl : .all
+  }
+  var body: some View {
+    NavigationStack(path: $path) {
+      Group {
+        if let investment { DailyView(investment: investment) }
+        else { MyView() }
+      }
+      .navigationDestination(for: String.self) { route in
+        if route == "settings" { SettingsView() }
+        else { ReportView(initialScope: initialScope) }
+      }
+    }
+    .onChange(of: path) { _, value in
+      UserDefaults.standard.set(value.last ?? "", forKey: storageKey)
+    }
   }
 }
 

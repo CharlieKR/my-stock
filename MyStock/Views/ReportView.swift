@@ -5,12 +5,15 @@ struct ReportView: View {
   @Environment(ReportStore.self) private var store
   @Environment(\.dismiss) private var dismiss
   @AppStorage("hideAmounts") private var hidden = false
-  @State private var scope: ReportScope = .all
-  @State private var period: ReportPeriod = .all
+  @AppStorage private var scope: ReportScope
+  @AppStorage private var period: ReportPeriod
   @State private var showMethod = false
-  @State private var metric = "수익금"
+  @AppStorage private var metric: String
   init(initialScope: ReportScope) {
-    _scope = State(initialValue: initialScope)
+    let key = "viewer.report.\(initialScope.rawValue)"
+    _scope = AppStorage(wrappedValue: initialScope, "\(key).scope")
+    _period = AppStorage(wrappedValue: .all, "\(key).period")
+    _metric = AppStorage(wrappedValue: "수익금", "\(key).metric")
   }
   private var fullPerformance: ServerPerformance? { store.envelope.performance?[scope == .all ? "all" : scope.rawValue] }
   private var serverPerformance: ServerPerformance? {
@@ -22,7 +25,7 @@ struct ReportView: View {
     guard let end=all.last?.date,let start=period.start(ending:end) else { return all }
     return all.filter { $0.date >= start }
   }
-  private var allMonths: [MonthlyPerformance] {
+  private func months(for points: [AssetPoint]) -> [MonthlyPerformance] {
     if let serverPerformance { return serverPerformance.months.map(\.display) }
     guard store.isDemo,let first=points.first,let last=points.last else { return [] }
     return Performance.monthly(store.envelope,scope:scope).filter { $0.endDate>=first.date && $0.startDate<=last.date }.map { month in
@@ -33,8 +36,7 @@ struct ReportView: View {
         cashflow:0,partial:true,estimated:false)
     }
   }
-  private var months: [MonthlyPerformance] { allMonths }
-  private var selectedSummary: MonthlyPerformance? {
+  private func selectedSummary(for points: [AssetPoint]) -> MonthlyPerformance? {
     if let summary=serverPerformance?.summary { return summary.display }
     guard store.isDemo,let first=points.first,let last=points.last else { return nil }
     return MonthlyPerformance(month:String(first.date.prefix(7)),startDate:first.date,endDate:last.date,
@@ -42,12 +44,14 @@ struct ReportView: View {
       returnPercent:first.assets>0 ? (last.assets-first.assets)/first.assets*100 : nil,
       cashflow:0,partial:false,estimated:false)
   }
-  private var yearPoints: [AssetPoint] { points }
   var body: some View {
-    Canvas {
+    let points = points
+    let months = months(for: points)
+    let summary = selectedSummary(for: points)
+    return Canvas {
       Picker("투자 선택", selection: $scope) {
         ForEach(ReportScope.allCases) { Text($0.rawValue).tag($0) }
-      }.pickerStyle(.segmented)
+      }.pickerStyle(.segmented).accessibilityIdentifier("report.scope")
       HStack {
         Text(scope == .all ? "모든 투자를, 하나의 흐름으로" : "\(scope.rawValue)의 투자 흐름").font(.subheadline)
           .foregroundStyle(.secondary)
@@ -65,15 +69,15 @@ struct ReportView: View {
               scope == .all ? "두 투자 리포트와 날짜별 환율이 필요합니다." : "정산된 리포트가 쌓이면 성과를 보여드릴게요."))
         }
       } else {
-        if let first = yearPoints.first, let last = yearPoints.last {
+        if let first = points.first, let last = points.last {
           Text("\(ReportDate.label(first.date, format: "yyyy.MM.dd")) – \(ReportDate.label(last.date, format: "yyyy.MM.dd")) · \(points.count)일 기록")
             .font(.caption).foregroundStyle(.secondary)
             .accessibilityIdentifier("report.dateRange")
         }
         ReportAssetCard(points: points, currency: scope.currency,
-          tint: scope == .hyxl ? .hyxlAccent : .brandAccent, summary: selectedSummary)
+          tint: scope == .hyxl ? .hyxlAccent : .brandAccent, summary: summary)
           .id(scope.rawValue + period.rawValue)
-        if scope == .all, let latest = yearPoints.last {
+        if scope == .all, let latest = points.last {
           Notice(
             text:
               "원화 환산 · 1 USD = \(Format.money(latest.fx, "KRW"))\n각 날짜의 기준환율을 적용하며 환율 변동을 포함합니다.")
@@ -91,8 +95,8 @@ struct ReportView: View {
             Text("수익금").tag("수익금")
             Text("수익률").tag("수익률")
             Text("자산 변화").tag("자산 변화")
-          }.pickerStyle(.segmented)
-          if !hidden { monthlyChart }
+          }.pickerStyle(.segmented).accessibilityIdentifier("report.metric")
+          if !hidden { monthlyChart(months) }
           Surface(padding: 0) {
             VStack(spacing: 0) {
               HStack {
@@ -166,7 +170,7 @@ struct ReportView: View {
     .sheet(isPresented: $showMethod) { methodSheet }
     .refreshable { await store.refresh() }
   }
-  private var monthlyChart: some View {
+  private func monthlyChart(_ months: [MonthlyPerformance]) -> some View {
     Surface {
       Chart(months.reversed()) { month in
         let value =

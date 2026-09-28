@@ -4,7 +4,8 @@ import XCTest
   private func launch(extra: [String] = []) -> XCUIApplication {
     continueAfterFailure = false
     let app = XCUIApplication()
-    app.launchArguments = ["--demo", "--ui-testing"] + extra
+    let reset = extra.contains("--restore-viewer-state") ? [] : ["--reset-viewer-state"]
+    app.launchArguments = ["--demo", "--ui-testing"] + reset + extra
     app.launch()
     XCTAssertTrue(app.buttons["tab.SOXL"].waitForExistence(timeout: 10))
     return app
@@ -147,6 +148,50 @@ import XCTest
       app.swipeDown()
       XCTAssertEqual(date.label,original)
     }
+  }
+  func testTabDatesAndReportFiltersSurviveAppTermination() {
+    var app = launch()
+    app.buttons["이전 리포트"].tap()
+    let soxlDate = app.staticTexts["daily.selectedDate"].label
+    let orderCard = app.buttons["order.activity.daily-orders"]
+    for _ in 0..<4 {
+      if orderCard.isHittable { break }
+      app.swipeUp()
+    }
+    XCTAssertTrue(orderCard.isHittable)
+    orderCard.tap()
+    XCTAssertTrue(app.staticTexts["24주 × $82.40"].waitForExistence(timeout: 5))
+    app.buttons["tab.HYXL"].tap()
+    app.buttons["이전 리포트"].tap()
+    let hyxlDate = app.staticTexts["daily.selectedDate"].label
+    app.buttons["tab.My"].tap()
+    app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "종합리포트")).firstMatch.tap()
+    XCTAssertTrue(app.navigationBars["종합리포트"].waitForExistence(timeout: 5))
+    app.segmentedControls["report.scope"].buttons["SOXL"].tap()
+    app.segmentedControls["report.period"].buttons["1개월"].tap()
+    app.swipeUp()
+    let metric = app.segmentedControls["report.metric"]
+    XCTAssertTrue(metric.waitForExistence(timeout: 5))
+    metric.buttons["자산 변화"].tap()
+    app.terminate()
+
+    app = launch(extra: ["--restore-viewer-state"])
+    XCTAssertTrue(app.navigationBars["종합리포트"].waitForExistence(timeout: 5))
+    XCTAssertTrue(app.segmentedControls["report.scope"].buttons["SOXL"].isSelected)
+    XCTAssertTrue(app.segmentedControls["report.period"].buttons["1개월"].isSelected)
+    app.swipeUp()
+    XCTAssertTrue(app.segmentedControls["report.metric"].buttons["자산 변화"].isSelected)
+    app.buttons["report.back"].tap()
+    app.buttons["tab.SOXL"].tap()
+    XCTAssertEqual(app.staticTexts["daily.selectedDate"].label, soxlDate)
+    XCTAssertTrue(app.staticTexts["24주 × $82.40"].waitForExistence(timeout: 5))
+    app.buttons["tab.HYXL"].tap()
+    XCTAssertEqual(app.staticTexts["daily.selectedDate"].label, hyxlDate)
+    app.terminate()
+
+    app = launch(extra: ["--restore-viewer-state"])
+    XCTAssertTrue(app.staticTexts["국내 주식 · KRW"].waitForExistence(timeout: 5))
+    XCTAssertEqual(app.staticTexts["daily.selectedDate"].label, hyxlDate)
   }
   func testDarkAppearance() {
     let app = launch(extra: ["--dark"])
