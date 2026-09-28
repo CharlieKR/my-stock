@@ -40,10 +40,14 @@ struct DailyReport: Codable, Identifiable, Sendable {
   let plannedOrderCount: Int?
   var day: Date { ReportDate.parse(date) }
   var isValued: Bool { status == "settled" && totalAssets != nil }
+  var isEmptyOrderPlan: Bool {
+    status == "pending" && totalAssets == nil && plannedOrderCount == 0
+      && (messages?.isEmpty ?? true) && details.isEmpty
+  }
   var isOrderPlan: Bool {
-    hasOrderPlan == true
+    !isEmptyOrderPlan && (hasOrderPlan == true
       || messages?.contains(where: { $0.title.contains("주문") }) == true
-      || details.contains(where: { $0.title.contains("주문") || $0.text.contains("주문금액") })
+      || details.contains(where: { $0.title.contains("주문") || $0.text.contains("주문금액") }))
   }
   var statusTitle: String {
     status == "closed" ? "휴장" : status == "settled" ? "정산 완료" : isOrderPlan ? "주문 예정" : "정산 대기"

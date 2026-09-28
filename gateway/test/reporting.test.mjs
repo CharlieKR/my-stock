@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { latestBatchesSQL } from '../database.mjs';
 import { calculatePerformance, performanceWithPeriods, periodStart } from '../performance.mjs';
-import { normalizeBatches, mergeDailyReport, closingQuotes } from '../reports-v2.mjs';
+import { normalizeBatches, mergeDailyReport, closingQuotes, isEmptyOrderPlan } from '../reports-v2.mjs';
 
 const report=(date,nav,extra={})=>({id:'SOXL-'+date,investment:'SOXL',date,currency:'USD',status:'settled',totalAssets:String(nav),quality:'broker_reconciled',cashEvents:[],cashflowCoverageFrom:'2026-01-01',...extra});
 const when=new Date('2026-04-01T12:00:00Z');
@@ -150,6 +150,26 @@ test('future plan is queryable without becoming a valuation',()=>{
   assert.equal(result.hasOrderPlan,true);assert.equal(result.plannedOrderCount,1);
   assert.deepEqual(result.details,[]);
   assert.match(result.messages.at(-1).text,/주문표 생성.*매수.*2,141주.*₩12,660.*₩27,105,060.*예정/s);
+});
+test('cancelled empty future plan is hidden without removing active orders or zero-fill settlements',()=>{
+  const monday=batch({date:'2026-09-28',stage:'plan',nav:null,
+    orders:[{symbol:'0193T0.KS',side:'BUY',qty:10,limit_price:100,status:'ready'}]});
+  const tuesday=batch({date:'2026-09-29',stage:'plan',nav:null,orders:[]});
+  const reports=normalizeBatches([monday,tuesday],'HYXL');
+  assert.equal(reports[1].hasOrderPlan,false);
+  assert.equal(reports[1].plannedOrderCount,0);
+  assert.deepEqual(reports.filter(r=>!isEmptyOrderPlan(r)).map(r=>r.date),['2026-09-28']);
+  // The previously deployed API marked this exact empty placeholder as a plan.
+  assert.equal(isEmptyOrderPlan({...reports[1],hasOrderPlan:true}),true);
+  assert.equal(isEmptyOrderPlan({...reports[1],status:'closed'}),false);
+  assert.equal(isEmptyOrderPlan(normalizeBatches([batch(),batch({portfolioId:'ls_main'})],'HYXL')[0]),false);
+  assert.equal(isEmptyOrderPlan(normalizeBatches([batch()],'HYXL')[0]),false);
+  assert.equal(isEmptyOrderPlan({...reports[1],plannedOrderCount:null}),false);
+  const stalePlan={...reports[0],id:reports[1].id,date:reports[1].date};
+  assert.equal(isEmptyOrderPlan(mergeDailyReport(stalePlan,reports[1])),true);
+  const submitted={...stalePlan,messages:[{id:'execution',date:monday.capturedAt,
+    text:'주문 제출\n- 매수 KODEX 10주 @ ₩100 / ₩1,000 LOC · 제출 완료'}]};
+  assert.equal(isEmptyOrderPlan(mergeDailyReport(submitted,reports[1])),false);
 });
 test('plan, submission and fills are presented once in chronological order without account names',()=>{
   const rows=[

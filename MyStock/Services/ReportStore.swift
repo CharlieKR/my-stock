@@ -178,7 +178,8 @@ private struct ReportDiskCache: Codable {
       "v2/daily/\(report.investment.rawValue)/\(report.date)", base: Self.validatedURL(serverURL), key: Keychain.read())
   }
   func reports(for investment: Investment) -> [DailyReport] {
-    envelope.reports.filter { $0.investment == investment }.sorted { $0.date > $1.date }
+    envelope.reports.filter { $0.investment == investment && !$0.isEmptyOrderPlan }
+      .sorted { $0.date > $1.date }
   }
   func showDemo() {
     refreshID = UUID()

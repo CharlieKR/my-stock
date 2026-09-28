@@ -114,6 +114,9 @@ export function mergeDailyReport(archived,current){
   if(!archived)return current;
   const stage=message=>/체결|결과/u.test(message.text.split('\n')[0])?'settled':
     /제출|실행/u.test(message.text.split('\n')[0])?'execution':'plan';
+  // A cleared current plan must not revive an older archived plan for that date.
+  if(isEmptyOrderPlan(current)&&archived.status==='pending'&&
+    (archived.messages??[]).every(m=>stage(m)==='plan'))return current;
   const messages=new Map((archived.messages??[]).map(m=>[stage(m),m]));
   for(const m of current.messages??[])messages.set(stage(m),m);
   const combined=[...messages.values()].sort((a,b)=>a.date.localeCompare(b.date));
@@ -127,6 +130,12 @@ export function mergeDailyReport(archived,current){
     ['totalAssets','cumulativePnl'].every(key=>archived[key]!=null&&current[key]!=null&&new Decimal(archived[key]).eq(current[key]));
   return {...current,messages:combined,
     ...(verifiedArchive?{performanceBasis:'archived_cumulative'}:{})};
+}
+// Empty plan publications are cancellation placeholders, not a queryable order day.
+// Keep settlements (including zero fills), holidays and partial reports with evidence.
+export function isEmptyOrderPlan(report){
+  return report.status==='pending'&&report.totalAssets==null&&report.plannedOrderCount===0&&
+    !(report.messages?.length)&&!(report.details?.length);
 }
 export function normalizeBatches(batches,investment) {
   const ids=investment==='SOXL'?['soxl_live']:(process.env.MY_STOCK_HYXL_PORTFOLIOS??'kiwoom_main,ls_main').split(',');
@@ -149,7 +158,7 @@ export function normalizeBatches(batches,investment) {
     if(complete&&!details.some(d=>d.title==='체결'))details.push({id:investment+':settled:fills',title:'체결',
       text:settledOrderCount?`${settledOrderCount}건 체결`:'없음'});
     const planBatches=day.filter(b=>b.stage==='plan');
-    const plannedOrderCount=planBatches.reduce((count,b)=>count+(b.orders?.length??0),0);
+    const plannedOrderCount=planBatches.reduce((count,b)=>count+dailyOrders(b).length,0);
     const quality=complete&&present.every(b=>b.quality==='broker_reconciled')?'broker_reconciled':'incomplete';
     const valueDate=present.map(b=>b.capturedAt).sort().at(-1)??capturedAt;
     return {id:investment+'-'+date,investment,date,currency:investment==='SOXL'?'USD':'KRW',
@@ -161,7 +170,7 @@ export function normalizeBatches(batches,investment) {
       rawText:details.map(d=>d.title+'\n'+d.text).join('\n\n'),slackURL:'',threadTS:'',updatedAt:capturedAt,
       quality,availableDate:new Date(valueDate).toLocaleDateString('en-CA',{timeZone:'Asia/Seoul'}),
       cashEvents,cashflowCoverageFrom:coverage,
-      hasOrderPlan:planBatches.length>0,plannedOrderCount,
+      hasOrderPlan:plannedOrderCount>0,plannedOrderCount,
       messages:timelineMessages(day)};
   });
 }
@@ -193,7 +202,8 @@ async function buildV2(){
   });
   const map=new Map(legacy.map(r=>[r.id,r]));
   for(const s of states)for(const r of normalizeBatches(s.batches,s.investment))map.set(r.id,mergeDailyReport(map.get(r.id),r));
-  const reports=[...map.values()].sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
+  const reports=[...map.values()].filter(r=>!isEmptyOrderPlan(r))
+    .sort((a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id));
   const rates=new Map((archive.fxRates??[]).map(r=>[r.date,r]));
   for(const s of states)for(const r of s.rates)rates.set(r.date,r);
   const fxRates=[...rates.values()].sort((a,b)=>a.date.localeCompare(b.date));

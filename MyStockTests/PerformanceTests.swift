@@ -29,6 +29,23 @@ private func report(
   #expect(plan.statusTitle == "주문 예정")
   #expect(!plan.isValued)
 }
+@Test func emptyCancelledOrderPlanIsExcludedEvenWithLegacyPlanFlag() throws {
+  let json = """
+    {"id":"HYXL-2026-09-29","investment":"HYXL","date":"2026-09-29","currency":"KRW",\
+    "status":"pending","dailyPnlLabel":"오늘 손익","details":[],"messages":[],\
+    "rawText":"","slackURL":"","threadTS":"","updatedAt":"","hasOrderPlan":true,"plannedOrderCount":0}
+    """
+  let empty = try JSONDecoder().decode(DailyReport.self, from: Data(json.utf8))
+  #expect(empty.isEmptyOrderPlan)
+  #expect(!empty.isOrderPlan)
+  #expect(!report(.hyxl, "2026-09-28", assets: 100, pnl: 0).isEmptyOrderPlan)
+  let activeJSON = json.replacingOccurrences(of: "\"plannedOrderCount\":0", with: "\"plannedOrderCount\":4")
+  let active = try JSONDecoder().decode(DailyReport.self, from: Data(activeJSON.utf8))
+  #expect(!active.isEmptyOrderPlan)
+  #expect(active.isOrderPlan)
+  let closedJSON = json.replacingOccurrences(of: "\"pending\"", with: "\"closed\"")
+  #expect(!(try JSONDecoder().decode(DailyReport.self, from: Data(closedJSON.utf8))).isEmptyOrderPlan)
+}
 private func envelope(_ reports: [DailyReport], rates: [FXRate] = []) -> ReportEnvelope {
   ReportEnvelope(
     schemaVersion: 1, generatedAt: nil, reports: reports, fxRates: rates, fxSource: nil,
