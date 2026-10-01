@@ -60,6 +60,41 @@ test('archive, missing ledger and initial month do not invent returns',()=>{
   assert.equal(r.months[0].profit,null);assert.equal(r.months[0].returnPercent,null);assert.equal(r.months[0].endAssets,'120.00000000');
 });
 const archived=(date,nav,pnl,extra={})=>report(date,nav,{quality:'legacy_archive',cashflowCoverageFrom:null,cumulativePnl:pnl,...extra});
+test('September archive/live settlements retain monthly profit without verified ledger coverage',()=>{
+  const live=(date,nav,pnl,extra={})=>report(date,nav,{cashflowCoverageFrom:null,cumulativePnl:pnl,...extra});
+  const hyxl={investment:'HYXL',currency:'KRW'};
+  const rows=[archived('2026-08-31',150140.01,40791.77),live('2026-09-21',159635.73,50287.49),
+    live('2026-09-30',161496.93,52148.69),
+    archived('2026-08-31',162409369,39409369,{...hyxl,id:'HYXL-opening'}),
+    live('2026-09-07',168002173,44993518,{...hyxl,id:'HYXL-deposit-1'}),
+    live('2026-09-28',170243023,45768528,{...hyxl,id:'HYXL-deposit-2'}),
+    live('2026-09-30',170701966,46227471,{...hyxl,id:'HYXL-closing'})];
+  const now=new Date('2026-10-01T12:00:00Z');
+  const soxl=calculatePerformance(rows,[],'SOXL',now).months[0];
+  assert.equal(soxl.profit,'11356.92000000');assert.equal(soxl.cashflow,'0.00000000');
+  assert.equal(soxl.coverage,'complete');assert.equal(soxl.estimated,true);
+  const hy=calculatePerformance(rows,[],'HYXL',now).months[0];
+  assert.equal(hy.profit,'6818102.00000000');assert.equal(hy.cashflow,'1474495.00000000');
+  assert.ok(Number(hy.returnPercent)>4.19&&Number(hy.returnPercent)<4.20);
+  const rates=rows.map(r=>({date:r.date,usdKrw:1000}));
+  const all=calculatePerformance(rows,rates,'all',now).months[0];
+  assert.equal(all.profit,'18175022.00000000');assert.equal(all.cashflow,'1474495.00000000');
+  assert.equal(all.coverage,'complete');assert.equal(all.estimated,true);
+});
+test('live capital fallback requires reconciled P&L and keeps verified ledger priority',()=>{
+  const rows=[report('2026-02-27',100,{cumulativePnl:0,cashflowCoverageFrom:null}),
+    report('2026-03-31',210,{cumulativePnl:10,cashflowCoverageFrom:null})];
+  assert.equal(calculatePerformance(rows,[],'SOXL',when).months[0].profit,'10.00000000');
+  for(const extra of [{quality:'incomplete'},{quality:'unknown'},{cumulativePnl:null}]) {
+    const result=calculatePerformance([rows[0],{...rows[1],...extra}],[],'SOXL',when);
+    assert.equal(result.months[0].profit,null);assert.equal(result.months[0].coverage,'insufficient');
+  }
+  const withLedger=rows.map(r=>({...r,cashflowCoverageFrom:'2026-01-01',cashEvents:[
+    {id:'deposit',date:'2026-03-15',kind:'deposit',amount:'100',currency:'USD'}]}));
+  const exact=calculatePerformance(withLedger,[],'SOXL',when).months[0];
+  assert.equal(exact.profit,'10.00000000');assert.equal(exact.method,'modified_dietz');
+  assert.ok(Number(exact.returnPercent)<10); // Uses the ledger date, not the later observed capital change.
+});
 test('daily P&L bridges missing cumulative history and removes deposits from return',()=>{
   const rows=[archived('2026-06-29',100,null),archived('2026-06-30',151,null,{dailyPnl:1})];
   const result=calculatePerformance(rows,[],'SOXL',new Date('2026-09-20')).months[0];

@@ -1,12 +1,12 @@
 import Decimal from 'decimal.js';
 Decimal.set({precision:32});
-export const calculationVersion='nav-ledger-dietz-2.4-daily-history';
+export const calculationVersion='nav-ledger-dietz-2.5-settled-capital';
 const D=v=>new Decimal(v);
 const days=(a,b)=>(Date.parse(b)-Date.parse(a))/86400000;
 const text=v=>v===null?null:D(v).toFixed(8);
 const latest=(rows,date)=>rows.filter(r=>r.date<=date && days(r.date,date)<=7).at(-1);
 
-// Archived reports retain cumulative P&L but not a verified cash ledger.
+// Settled reports can retain cumulative P&L without a verified cash ledger.
 // Changes in NAV minus cumulative P&L estimate capital changes; never treat
 // deposits, or the first appearance of another investment, as investment gain.
 function consecutiveWeekdays(before,after) {
@@ -124,10 +124,13 @@ export function calculatePerformance(reports,rates,scope,now=new Date(),range={}
     const denominator=D(start.assets).plus(weighted);
     let pct=profit!==null&&denominator.gt(0)?profit.div(denominator).times(100):null;
     let inferred=null;
-    // Keep historical estimates when DB NAV/P&L exactly match the frozen archive.
-    // New or corrected DB observations still require verified ledger coverage.
+    // A reconciled settlement's NAV minus cumulative P&L also provides a
+    // capital basis. Use it as an explicitly estimated fallback when ledger
+    // coverage is unavailable, including spans crossing archive/live data.
+    // Incomplete or unknown publications must not become return evidence.
     const span=points.filter(p=>p.date>=start.date&&p.date<=end.date);
-    if(!valid&&span.every(p=>p.parts.every(r=>r.quality==='legacy_archive'||r.performanceBasis==='archived_cumulative'))) {
+    if(!valid&&span.every(p=>p.parts.every(r=>r.quality==='legacy_archive'||r.performanceBasis==='archived_cumulative'||
+      (r.quality==='broker_reconciled'&&r.cumulativePnl!=null)))) {
       inferred=inferHistoricalPerformance(span,scope);
       if(inferred){start=inferred.start;profit=inferred.profit;pct=inferred.returnPercent;net=inferred.net;}
     }
@@ -141,7 +144,7 @@ export function calculatePerformance(reports,rates,scope,now=new Date(),range={}
       partial:coverage!=='complete',coverage,coverageLabel,
       estimated:profit!==null&&(Boolean(inferred)||hasFlow||inside.some(p=>p.quality!=='broker_reconciled')),
       method:inferred?'inferred_capital_dietz':hasFlow?'modified_dietz':'simple',
-      reason:inferred?(inferred.shortened?`손익 근거가 확인되는 ${start.date}부터 계산한 추정 수익입니다.`:inferred.usesDaily?'누적 손익이 없는 날짜는 연속된 일별 손익과 자산 변화를 사용해 원금 변화를 추정했습니다.':'과거 누적 손익과 자산에서 원금 변화를 추정한 수익입니다.'):
+      reason:inferred?(inferred.shortened?`손익 근거가 확인되는 ${start.date}부터 계산한 추정 수익입니다.`:inferred.usesDaily?'누적 손익이 없는 날짜는 연속된 일별 손익과 자산 변화를 사용해 원금 변화를 추정했습니다.':'정산 자산과 누적 손익에서 원금 변화를 추정해 입출금을 제외한 수익입니다.'):
         valid?null:'누적 손익 또는 입출금 원장이 부족해 수익을 계산할 수 없습니다.'};
     if(month)months.push(result);else summary=result;
   }

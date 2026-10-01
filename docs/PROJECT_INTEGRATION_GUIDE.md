@@ -38,7 +38,7 @@ MY_STOCK_SLACK_ENABLED=true
 # MY_STOCK_CASHFLOW_COVERAGE_FROM=YYYY-MM-DD
 ```
 
-`MY_STOCK_CASHFLOW_COVERAGE_FROM`은 그 날짜 이후 외부입출금이 누락 없이 기록됨을 운영자가 확인한 날짜다. 첫 원장 행 날짜를 그대로 복사하지 않는다. 비워 두면 자산은 표시하고 월별 수익금·수익률은 미확정으로 둔다.
+`MY_STOCK_CASHFLOW_COVERAGE_FROM`은 그 날짜 이후 외부입출금이 누락 없이 기록됨을 운영자가 확인한 날짜다. 첫 원장 행 날짜를 그대로 복사하지 않는다. 비워 두어도 정상 정산의 자산·누적 손익이 있으면 원금 변화에서 입출금을 추정해 월별 수익금·수익률을 계산하며 추정으로 표시한다. 이 추정은 원장 완전성 확인을 대신하지 않는다. 누적 손익 등 계산 근거까지 없으면 수익은 비워둔다.
 
 kst는 기존 runner 실행 경로 기준으로 `node dist/jobs/myStockSync.js`를, lst는 프로젝트 루트에서 `npx tsx src/jobs/myStockSync.ts`를 별도 읽기/재시도 작업으로 실행한다. 운영 서버의 중복 실행 방지 방식으로 감싸 5분 간격을 권장한다. 기존 매매 작업 cron은 유지한다. 두 작업은 수동으로 마지막 인자에 `YYYY-MM-DD`를 받을 수 있다.
 
