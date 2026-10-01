@@ -1,0 +1,41 @@
+--- a/src/jobs/dailyReport.ts
++++ b/src/jobs/dailyReport.ts
+@@ -1,4 +1,5 @@
+ import { publishLstReporting } from "../lib/myStockAdapter";
++import { reportingFillType, reportingFillExecutions } from "../lib/myStockFillTypes";
+ /**
+  * 05:25/06:25 KST (화~토) – 일일 리포트 Job
+  *
+@@ -533,12 +534,14 @@
+   qty: number;
+   price: number;
+   channelName: string | null;
++  orderType: string | null;
+ }
+ 
+ interface FillMatchSummary {
+   matchedQty: number;
+   matchedAmount: number;
+   channelName: string | null;
++  executions: ReturnType<typeof reportingFillExecutions>;
+ }
+ 
+ interface StrategyOpenPosition {
+@@ -702,6 +705,7 @@
+       qty,
+       price: fill.filledPrice,
+       channelName: normalizeChannelName(fill.raw.CommdaNm),
++      orderType: reportingFillType(fill.raw),
+     });
+     fill.remainingQty -= qty;
+     remaining -= qty;
+@@ -887,7 +891,8 @@
+           `[Report] 체결 일부만 매칭: ${order.usDate} ${order.strategyName} ${order.tradeType} ${order.symbol} ${order.qty}주`,
+         );
+       }
+-      fillMap.set(order.id, { matchedQty, matchedAmount, channelName });
++      fillMap.set(order.id, { matchedQty, matchedAmount, channelName,
++        executions: reportingFillExecutions(matched) });
+       continue;
+     }
+ 

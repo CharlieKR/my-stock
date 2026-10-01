@@ -7,11 +7,20 @@ import { performanceWithPeriods, calculationVersion } from './performance.mjs';
 
 const sum=(rows,key)=>rows.some(r=>r[key]===null||r[key]===undefined)?null:rows.reduce((a,r)=>a.plus(r[key]),new Decimal(0)).toString();
 const number=value=>Number(value).toLocaleString('ko-KR',{maximumFractionDigits:2});
+const orderType=order=>order.actualOrderType??order.order_type??order.orderType??order.type??'';
+const orderTypeLabel=value=>({MARKET:'시장가',MOC:'시장가(MOC)',LIMIT:'지정가',LOC:'LOC',LIT:'LIT'})[String(value).trim().toUpperCase()]??value;
+function submittedOrderType(order,batch){
+  if(order?.actualOrderType)return order.actualOrderType;
+  // HYXL's KRX executor submits a market order only for a null price; a
+  // strategy LOC plan is submitted as a normal priced KRX limit order.
+  if(batch.investment==='HYXL'&&order&&Object.hasOwn(order,'limit_price'))return order.limit_price===null?'MARKET':'LIMIT';
+  return order?orderType(order):'';
+}
 function groupedOrderLines(orders,suffix){
   const groups=new Map();
   for(const order of orders){
     const note=typeof suffix==='function'?suffix(order):suffix;
-    const key=JSON.stringify([order.symbol,order.side,order.limit_price??order.order_price??order.price,order.order_type??order.type,order.currency,note]);
+    const key=JSON.stringify([order.symbol,order.side,order.limit_price??order.order_price??order.price,orderType(order),order.currency,note]);
     const current=groups.get(key);
     if(current)current.order.qty+=Number(order.qty??order.quantity??0);
     else groups.set(key,{order:{...order,qty:Number(order.qty??order.quantity??0)},note});
@@ -27,7 +36,7 @@ function orderLine(order,currency,suffix=''){
   if(price===null||price===undefined||!Number.isFinite(Number(price)))return `- ${side} ${symbol} ${number(qty)}주 · 가격 미정`;
   const mark=currency==='KRW'?'₩':'$';
   const amount=new Decimal(price).times(qty);
-  const type=order.order_type??order.type??'';
+  const type=orderTypeLabel(orderType(order));
   const note=[type,suffix].filter(Boolean).join(' · ');
   return `- ${side} ${symbol} ${number(qty)}주 @ ${mark}${number(price)} / ${mark}${number(amount)}${note?` ${note}`:''}`;
 }
@@ -82,10 +91,20 @@ function timelineMessages(day){
       const fillLines=fills.flatMap(({fill,batch})=>{
         if(Array.isArray(fill)){
           const order=batch.orders?.find(o=>String(o.id)===String(fill[0]));
-          return order?[orderLine({...order,qty:fill[1].matchedQty,limit_price:new Decimal(fill[1].matchedAmount).div(fill[1].matchedQty)},batch.currency,'체결 완료')]:[];
+          if(!order)return [];
+          const parts=fill[1].executions;
+          // Split mixed execution methods only when their quantities and values
+          // reconcile to the original fill summary. Never duplicate a fill.
+          const complete=Array.isArray(parts)&&parts.length&&parts.every(p=>Number(p.qty)>0&&Number(p.amount)>0)&&
+            new Decimal(parts.reduce((n,p)=>n+Number(p.qty),0)).eq(fill[1].matchedQty)&&
+            new Decimal(parts.reduce((n,p)=>n+Number(p.amount),0)).minus(fill[1].matchedAmount).abs().lt('0.000001');
+          const executions=complete?parts:[{qty:fill[1].matchedQty,amount:fill[1].matchedAmount,orderType:fill[1].orderType??submittedOrderType(order,batch)}];
+          return executions.map(p=>orderLine({...order,qty:p.qty,actualOrderType:p.orderType||'방식 미확인',
+            limit_price:new Decimal(p.amount).div(p.qty)},batch.currency,'체결 완료'));
         }
         const order=batch.orders?.find(o=>String(o.id)===String(fill.order_id));
-        return [orderLine({...fill,side:order?.side,symbol:fill.symbol??order?.symbol,order_type:order?.order_type,limit_price:fill.price},batch.currency,'체결 완료')];
+        return [orderLine({...fill,side:order?.side,symbol:fill.symbol??order?.symbol,
+          actualOrderType:orderType(fill)||submittedOrderType(order,batch)||'방식 미확인',limit_price:fill.price},batch.currency,'체결 완료')];
       });
       const matched=new Map();
       for(const {fill,batch} of fills){

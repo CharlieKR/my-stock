@@ -43,6 +43,13 @@ import Testing
   #expect(!result.orderPreviews[0].isUnfilled)
   #expect(result.orderPreviews[1].isUnfilled)
 }
+@Test func showsActualFillMethodsWithoutMarkingSuccessfulExecutionsUnfilled() {
+  let result = ThreadMessage(id: "fills", text:
+    "체결 결과\n- 매수 SOXL 4주 @ $100 / $400 지정가 · 체결 완료\n- 매수 SOXL 6주 @ $110 / $660 LOC · 체결 완료\n- 매도 SOXL 2주 @ $120 / $240 시장가 · 체결 완료", date: "")
+  #expect(result.orderPreviews.map(\.type) == ["지정가 · 체결 완료", "LOC · 체결 완료", "시장가 · 체결 완료"])
+  #expect(result.orderPreviews.map(\.quantity) == ["4", "6", "2"])
+  #expect(!result.orderPreviews.contains { $0.isUnfilled })
+}
 @Test func parsesStrategyHeadingsAndOrderTypes() {
   let message = ThreadMessage(
     id: "2",

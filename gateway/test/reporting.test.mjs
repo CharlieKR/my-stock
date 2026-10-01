@@ -221,7 +221,7 @@ test('settled SENT orders are unfilled; partial fills show only the remaining qu
   const source=batch({orders:[{id:'a',symbol:'0193T0.KS',side:'BUY',qty:10,limit_price:100,status:'SENT',filled_qty:4}],
     evidence:{fills:[{order_id:'a',symbol:'0193T0.KS',qty:4,price:99}]}});
   const text=normalizeBatches([source],'HYXL')[0].messages[0].text;
-  assert.match(text,/KODEX 4주 @ ₩99 \/ ₩396 체결 완료/);
+  assert.match(text,/KODEX 4주 @ ₩99 \/ ₩396 지정가 · 체결 완료/);
   assert.match(text,/KODEX 6주 @ ₩100 \/ ₩600 미체결/);
   assert.doesNotMatch(text,/제출 완료/);
 });
@@ -230,8 +230,38 @@ test('SOXL matched fill evidence avoids duplicating full fills as unfilled',()=>
     {id:'a',symbol:'SOXL',side:'sell',qty:10,order_price:100,status:'filled',trade_type:'main'}],
     evidence:{fills:[['a',{matchedQty:10,matchedAmount:1010}]]}});
   const text=normalizeBatches([source],'SOXL')[0].messages[0].text;
-  assert.match(text,/10주 @ \$101 \/ \$1,010 체결 완료/);
+  assert.match(text,/10주 @ \$101 \/ \$1,010 방식 미확인 · 체결 완료/);
   assert.doesNotMatch(text,/미체결|main/);
+});
+test('fill method comes from actual execution evidence and splits LIMIT / LOC partial executions',()=>{
+  const source=batch({investment:'SOXL',portfolioId:'soxl_live',currency:'USD',orders:[
+    {id:'a',symbol:'SOXL',side:'buy',qty:10,order_price:100,orderType:'LOC'}],
+    evidence:{fills:[['a',{matchedQty:10,matchedAmount:1060,executions:[
+      {qty:4,amount:400,orderType:'LIMIT'},{qty:6,amount:660,orderType:'LOC'}]}]]}});
+  const text=normalizeBatches([source],'SOXL')[0].messages[0].text;
+  assert.match(text,/4주 @ \$100 \/ \$400 지정가 · 체결 완료/);
+  assert.match(text,/6주 @ \$110 \/ \$660 LOC · 체결 완료/);
+  assert.doesNotMatch(text,/10주|미체결/);
+  source.evidence.fills[0][1].executions[0].orderType='MARKET';
+  assert.match(normalizeBatches([source],'SOXL')[0].messages[0].text,/시장가 · 체결 완료/);
+});
+test('HYXL KRX fills show actual market / limit submission rather than strategy LOC plan',()=>{
+  const source=batch({orders:[
+    {id:'market',symbol:'0193T0.KS',side:'SELL',qty:2,limit_price:null,order_type:'MOC'},
+    {id:'limit',symbol:'0193T0.KS',side:'BUY',qty:3,limit_price:100,order_type:'LOC'}],evidence:{fills:[
+      {order_id:'market',symbol:'0193T0',qty:2,price:110},{order_id:'limit',symbol:'0193T0',qty:3,price:99}]}});
+  const text=normalizeBatches([source],'HYXL')[0].messages[0].text;
+  assert.match(text,/2주 @ ₩110 \/ ₩220 시장가 · 체결 완료/);
+  assert.match(text,/3주 @ ₩99 \/ ₩297 지정가 · 체결 완료/);
+  assert.doesNotMatch(text,/LOC · 체결 완료/);
+});
+test('missing execution methods are explicit and inconsistent split metadata cannot duplicate fills',()=>{
+  const source=batch({investment:'SOXL',portfolioId:'soxl_live',currency:'USD',orders:[
+    {id:'a',symbol:'SOXL',side:'sell',qty:10,order_price:100}],
+    evidence:{fills:[['a',{matchedQty:10,matchedAmount:1000,executions:[{qty:20,amount:2000,orderType:'LOC'}]}]]}});
+  const text=normalizeBatches([source],'SOXL')[0].messages[0].text;
+  assert.match(text,/10주 @ \$100 \/ \$1,000 방식 미확인 · 체결 완료/);
+  assert.doesNotMatch(text,/20주|LOC|미체결/);
 });
 test('SOXL summary ignores historical, non-SOXL and zero fills and counts orders rather than fragments',()=>{
   const source=batch({investment:'SOXL',portfolioId:'soxl_live',currency:'USD',details:[{id:'bad',title:'체결',text:'250건 체결'}],orders:[
