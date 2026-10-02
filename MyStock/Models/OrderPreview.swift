@@ -43,6 +43,10 @@ struct OrderActivity: Identifiable {
     if rows.contains(where: \.isUnfilled) {
       // A later order result closes the submission step, even if rows were cancelled.
       if result != nil { return "완료" }
+      if rows.allSatisfy({ $0.type.contains("취소") }) { return "취소" }
+      if completed > 0 && rows.allSatisfy({
+        $0.type.contains("취소") || $0.type.contains("제출 완료") || $0.type.contains("체결 완료")
+      }) { return "일부 취소" }
       return completed > 0 ? "일부 제출" : "확인 필요"
     }
     if completed == rows.count { return "완료" }
@@ -69,10 +73,24 @@ struct OrderActivity: Identifiable {
     var activities = messages.filter { $0.activityTitle == "체결 결과" }.map {
       OrderActivity(id: $0.id, message: $0, plan: nil)
     }
-    if let current = submission ?? plan {
+    // A cancelled replacement must not hide the still-valid original plan.
+    // Keep its cancelled history, without calling the plan submitted.
+    if let plan, let submission, result == nil,
+      !plan.orderPreviews.isEmpty, !submission.orderPreviews.isEmpty,
+      submission.orderPreviews.allSatisfy({ $0.type.contains("취소") }),
+      orderSignatures(plan) != orderSignatures(submission) {
+      activities.append(OrderActivity(id: "cancelled-orders", message: submission, plan: nil))
+      activities.append(OrderActivity(id: "daily-orders", message: plan, plan: plan))
+    } else if let current = submission ?? plan {
       activities.append(OrderActivity(id: "daily-orders", message: current, plan: plan, result: result))
     }
     return activities.sorted { $0.message.date < $1.message.date }
+  }
+
+  private static func orderSignatures(_ message: ThreadMessage) -> [String] {
+    message.orderPreviews.map {
+      [$0.side, $0.name, $0.quantity, $0.price].joined(separator: "|")
+    }.sorted()
   }
 }
 

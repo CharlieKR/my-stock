@@ -1,0 +1,36 @@
+--- a/src/lib/myStockAdapter.ts
++++ b/src/lib/myStockAdapter.ts
+@@ -36,7 +36,10 @@
+     ]);
+     const s=opts.summary;
+     if(stage==="execution"&&!orders.length)return;
+-    const execution=orders.map(o=>({...o,status:o.kis_order_no?"SUBMITTED":o.status}));
++    // A broker order number proves past submission, not that the order remains
++    // active. Preserve cancellation, fill and failure states on later reads.
++    const terminal=new Set(["SUCCESS","FILLED","DONE","SKIPPED","CANCELED","CANCELLED","FAILED","REJECTED"]);
++    const execution=orders.map(o=>({...o,status:o.kis_order_no&&!terminal.has(String(o.status).toUpperCase())?"SUBMITTED":o.status}));
+     const rp=stage==="settled"?rpSummaryDetail(date,events,s?.rpIncomeTotal,s?.rpIncomeToday):null;
+     const details=stage==="settled"?(opts.details??[]).filter(d=>d.title!=="RP"&&d.title!=="체결"):opts.details??[];
+     if(rp)details.unshift(rp);
+@@ -46,7 +49,10 @@
+       close:Number(p.close_price),previousClose:Number(p.prev_close)>0?Number(p.prev_close):null,source:"LST regular-session close"}));
+     const published=await publishReportingBatch(sb,{
+       schemaVersion:2,investment:"SOXL",portfolioId:"soxl_live",date,stage,currency:"USD",
+-      capturedAt:stage==="execution"?(orders.map(o=>o.created_at).filter(Boolean).sort().at(-1)??capturedAt):capturedAt,
++      capturedAt,
++      // Keep the activity's submission time separate from this observation's
++      // time, so status corrections and A→B→A changes remain ordered correctly.
++      ...(stage==="execution"?{activityAt:orders.map(o=>o.created_at).filter(Boolean).sort().at(-1)??capturedAt}:{}),
+       quality:opts.quality??"incomplete",nav:money(s?.actualTotalAsset),stockValue:money(s?.stockEval),
+       cash:s?money(s.actualTotalAsset-s.stockEval):null,principal:money(s?.totalBudget),
+       cumulativePnl:money(s?.totalReturn),dailyPnl:money(s?.todayNetPnl),
+--- a/src/lib/myStockReporting.ts
++++ b/src/lib/myStockReporting.ts
+@@ -9,6 +9,7 @@
+   date: string;
+   stage: "plan" | "execution" | "settled" | "closed";
+   capturedAt: string;
++  activityAt?: string;
+   currency: "USD" | "KRW";
+   quality: "broker_reconciled" | "incomplete" | "reconstructed" | "legacy_archive";
+   nav?: string | null;

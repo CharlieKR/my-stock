@@ -153,7 +153,7 @@ func submissionHeaderDoesNotTreatRejectedOrPendingOrdersAsComplete(body: String,
     text: "체결 결과\n- 매도 KODEX 2,127주 @ ₩11,865 / ₩25,236,855 LOC · 체결 완료\n\n미체결/거부\n- 매수 KODEX 2,464주 @ ₩11,540 / ₩28,434,560 LOC · 취소",
     date: "2026-09-23T07:26:25Z")
   let pending = OrderActivity.timeline([submission])
-  #expect(pending[0].submissionStatus == "일부 제출")
+  #expect(pending[0].submissionStatus == "일부 취소")
   let finished = OrderActivity.timeline([submission, result])
   #expect(finished[0].submissionStatus == "완료")
   #expect(finished[0].orders[1].isUnfilled)
@@ -163,4 +163,37 @@ func submissionHeaderDoesNotTreatRejectedOrPendingOrdersAsComplete(body: String,
     id: "cancelled", text: "주문 제출\n- 매수 KODEX 10주 @ ₩10,000 / ₩100,000 LOC · 취소",
     date: submission.date)
   #expect(OrderActivity.timeline([cancelledOnly, result])[0].submissionStatus == "완료")
+}
+
+@Test func cancelledSubmissionsAreKnownOutcomesBeforeSettlement() {
+  let cancelled = ThreadMessage(id:"cancelled",text:
+    "주문 제출\n- 매도 SOXL 49주 @ $170 / $8,330 취소",date:"")
+  let activity = OrderActivity.timeline([cancelled])[0]
+  #expect(activity.submissionStatus == "취소")
+  #expect(activity.orders[0].isUnfilled)
+  let partial = ThreadMessage(id:"partial",text:
+    cancelled.text + "\n- 매수 SOXL 2주 @ $150 / $300 제출 완료",date:"")
+  #expect(OrderActivity.timeline([partial])[0].submissionStatus == "일부 취소")
+}
+
+@Test func cancelledReplacementKeepsOriginalPlanVisibleWithoutClaimingSubmission() {
+  let plan = ThreadMessage(id: "plan", text:
+    "주문표 생성\n- 매도 SOXL 15주 @ $166.26 / $2,493.90 LOC · 예정", date: "2026-10-02T07:00:00Z")
+  let cancelled = ThreadMessage(id: "execution", text:
+    "주문 제출\n- 매도 SOXL 15주 @ $170 / $2,550 취소", date: "2026-10-02T14:27:44Z")
+  let activities = OrderActivity.timeline([cancelled, plan])
+  #expect(activities.count == 2)
+  #expect(activities[0].message.activityTitle == "주문표")
+  #expect(activities[0].submissionStatus == nil)
+  #expect(activities[0].orders[0].price == "$166.26")
+  #expect(activities[1].submissionStatus == "취소")
+
+  let matchingPlan = ThreadMessage(id: "same-plan", text:
+    "주문표 생성\n- 매도 SOXL 15주 @ $170 / $2,550 LOC · 예정", date: plan.date)
+  #expect(OrderActivity.timeline([matchingPlan, cancelled]).count == 1)
+  let submitted = ThreadMessage(id: "submitted", text:
+    "주문 제출\n- 매도 SOXL 15주 @ $166.26 / $2,493.90 LOC · 제출 완료", date: cancelled.date)
+  #expect(OrderActivity.timeline([plan, submitted]).count == 1)
+  let result = ThreadMessage(id: "result", text: "체결 결과\n체결 없음", date: "2026-10-02T20:00:00Z")
+  #expect(OrderActivity.timeline([plan, cancelled, result]).count == 2)
 }

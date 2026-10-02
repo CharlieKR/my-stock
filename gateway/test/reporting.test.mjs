@@ -217,6 +217,20 @@ test('plan, submission and fills are presented once in chronological order witho
   assert.doesNotMatch(messages.map(m=>m.text).join('\n'),/kiwoom_main|동파|Tide/);
   assert.match(messages[1].text,/제출 완료/);assert.match(messages[2].text,/체결 완료/);
 });
+test('execution corrections preserve cancelled and filled states at the original submission time',()=>{
+  const createdAt='2026-10-02T14:27:44Z';
+  const source=batch({investment:'SOXL',portfolioId:'soxl_live',currency:'USD',date:'2026-10-02',
+    stage:'execution',capturedAt:'2026-10-02T15:25:00Z',orders:[
+      {id:'cancelled',symbol:'SOXL',side:'SELL',qty:49,order_price:170,status:'skipped',created_at:createdAt},
+      {id:'filled',symbol:'SOXL',side:'BUY',qty:2,order_price:150,status:'success',created_at:createdAt}]});
+  const message=normalizeBatches([source],'SOXL')[0].messages[0];
+  assert.equal(message.date,createdAt);
+  assert.match(message.text,/49주 @ \$170 \/ \$8,330 취소/);
+  assert.match(message.text,/2주 @ \$150 \/ \$300 체결 완료/);
+  assert.doesNotMatch(message.text,/제출 완료/);
+  assert.equal(normalizeBatches([{...source,activityAt:'2026-10-02T14:28:00Z'}],'SOXL')[0].messages[0].date,
+    '2026-10-02T14:28:00Z');
+});
 test('settled SENT orders are unfilled; partial fills show only the remaining quantity',()=>{
   const source=batch({orders:[{id:'a',symbol:'0193T0.KS',side:'BUY',qty:10,limit_price:100,status:'SENT',filled_qty:4}],
     evidence:{fills:[{order_id:'a',symbol:'0193T0.KS',qty:4,price:99}]}});

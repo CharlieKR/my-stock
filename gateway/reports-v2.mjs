@@ -43,7 +43,7 @@ function orderLine(order,currency,suffix=''){
 const statusLabel=status=>{
   const value=String(status??'').toUpperCase();
   if(['SENT','SUBMITTED','OPEN','READY'].includes(value))return value==='READY'?'예정':'제출 완료';
-  if(['FILLED','DONE'].includes(value))return '체결 완료';
+  if(['SUCCESS','FILLED','DONE'].includes(value))return '체결 완료';
   if(['REJECTED','FAILED'].includes(value))return '거부';
   if(['CANCELED','CANCELLED','SKIPPED'].includes(value))return '취소';
   return status??'';
@@ -78,7 +78,9 @@ function timelineMessages(day){
   for(const stage of ['plan','execution','settled']){
     const batches=day.filter(b=>b.stage===stage);
     if(!batches.length)continue;
-    const date=batches.map(b=>b.capturedAt).sort().at(-1);
+    const date=batches.map(b=>b.activityAt??(stage==='execution'
+      ? dailyOrders(b).map(o=>o.submitted_at??o.created_at).filter(Boolean).sort().at(-1)??b.capturedAt
+      : b.capturedAt)).sort().at(-1);
     const orders=batches.flatMap(b=>dailyOrders(b).map(o=>({...o,currency:b.currency,portfolioId:b.portfolioId})));
     if(stage==='plan'&&orders.length){
       messages.push({id:'plan-orders',date,text:'주문표 생성\n'+groupedOrderLines(orders,'예정').join('\n')});
