@@ -40,6 +40,7 @@ struct OrderActivity: Identifiable {
     let completed = rows.filter {
       ["제출 완료", "체결 완료"].contains(where: $0.type.contains)
     }.count
+    if rows.allSatisfy({ $0.type.contains("미제출") }) { return "미제출" }
     if rows.contains(where: \.isUnfilled) {
       // A later order result closes the submission step, even if rows were cancelled.
       if result != nil { return "완료" }
@@ -77,7 +78,7 @@ struct OrderActivity: Identifiable {
     // Keep its cancelled history, without calling the plan submitted.
     if let plan, let submission, result == nil,
       !plan.orderPreviews.isEmpty, !submission.orderPreviews.isEmpty,
-      submission.orderPreviews.allSatisfy({ $0.type.contains("취소") }),
+      (submission.allOrdersCancelled ?? submission.orderPreviews.allSatisfy({ $0.type.contains("취소") })),
       orderSignatures(plan) != orderSignatures(submission) {
       activities.append(OrderActivity(id: "cancelled-orders", message: submission, plan: nil))
       activities.append(OrderActivity(id: "daily-orders", message: plan, plan: plan))

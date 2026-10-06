@@ -119,6 +119,7 @@ struct ThreadMessage: Codable, Identifiable, Sendable {
   let id: String
   let text: String
   let date: String
+  var allOrdersCancelled: Bool? = nil
   var title: String {
     let first = text.components(separatedBy: .newlines).first ?? "상세 리포트"
     return Self.clean(first)

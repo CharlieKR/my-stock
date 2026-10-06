@@ -217,17 +217,28 @@ test('plan, submission and fills are presented once in chronological order witho
   assert.doesNotMatch(messages.map(m=>m.text).join('\n'),/kiwoom_main|동파|Tide/);
   assert.match(messages[1].text,/제출 완료/);assert.match(messages[2].text,/체결 완료/);
 });
-test('execution corrections preserve cancelled and filled states at the original submission time',()=>{
+test('SOXL registration stays submitted after cancellation or fills, without inventing unregistered orders',()=>{
   const createdAt='2026-10-02T14:27:44Z';
   const source=batch({investment:'SOXL',portfolioId:'soxl_live',currency:'USD',date:'2026-10-02',
     stage:'execution',capturedAt:'2026-10-02T15:25:00Z',orders:[
-      {id:'cancelled',symbol:'SOXL',side:'SELL',qty:49,order_price:170,status:'skipped',created_at:createdAt},
-      {id:'filled',symbol:'SOXL',side:'BUY',qty:2,order_price:150,status:'success',created_at:createdAt}]});
+      {id:'cancelled',symbol:'SOXL',side:'SELL',qty:49,order_price:170,status:'skipped',kis_order_no:'410',created_at:createdAt},
+      {id:'filled',symbol:'SOXL',side:'BUY',qty:2,order_price:150,status:'success',created_at:createdAt},
+      {id:'not-sent',symbol:'SOXL',side:'BUY',qty:3,order_price:140,status:'skipped',created_at:createdAt},
+      {id:'rejected',symbol:'SOXL',side:'BUY',qty:4,order_price:130,status:'failed',created_at:createdAt}]});
   const message=normalizeBatches([source],'SOXL')[0].messages[0];
   assert.equal(message.date,createdAt);
-  assert.match(message.text,/49주 @ \$170 \/ \$8,330 취소/);
-  assert.match(message.text,/2주 @ \$150 \/ \$300 체결 완료/);
-  assert.doesNotMatch(message.text,/제출 완료/);
+  assert.match(message.text,/49주 @ \$170 \/ \$8,330 제출 완료/);
+  assert.match(message.text,/2주 @ \$150 \/ \$300 제출 완료/);
+  assert.match(message.text,/3주 @ \$140 \/ \$420 미제출/);
+  assert.match(message.text,/4주 @ \$130 \/ \$520 거부/);
+  assert.doesNotMatch(message.text,/취소|체결 완료/);
+  assert.equal(message.allOrdersCancelled,false);
+  const cancelled={...source,orders:[source.orders[0]]};
+  assert.equal(normalizeBatches([cancelled],'SOXL')[0].messages[0].allOrdersCancelled,true);
+  const settled={...source,stage:'settled',evidence:{fills:[['filled',{matchedQty:2,matchedAmount:300}]]}};
+  const result=normalizeBatches([source,settled],'SOXL')[0].messages.find(m=>m.id==='settled-fills');
+  assert.match(result.text,/2주 @ \$150 \/ \$300 .*체결 완료/);
+  assert.match(result.text,/49주 @ \$170 \/ \$8,330 미체결/);
   assert.equal(normalizeBatches([{...source,activityAt:'2026-10-02T14:28:00Z'}],'SOXL')[0].messages[0].date,
     '2026-10-02T14:28:00Z');
 });

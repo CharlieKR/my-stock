@@ -48,6 +48,17 @@ const statusLabel=status=>{
   if(['CANCELED','CANCELLED','SKIPPED'].includes(value))return '취소';
   return status??'';
 };
+function submissionLabel(order,investment){
+  if(investment!=='SOXL')return statusLabel(order.status)||'제출';
+  // Registration is a historical event. A later fill/cancellation cannot undo
+  // the broker's acceptance; its outcome belongs in the result card.
+  const status=String(order.status??'').toUpperCase();
+  const brokerId=String(order.kis_order_no??order.broker_order_id??'').trim();
+  if((brokerId&&brokerId!=='0')||['SENT','SUBMITTED','OPEN','SUCCESS','FILLED','DONE'].includes(status))return '제출 완료';
+  if(['REJECTED','FAILED'].includes(status))return '거부';
+  if(['SKIPPED','CANCELED','CANCELLED'].includes(status))return '미제출';
+  return '제출 대기';
+}
 function dailyOrders(batch){
   return (batch.orders??[]).filter(o=>(!o.us_date||o.us_date===batch.date)&&
     (batch.investment!=='SOXL'||String(o.symbol).toUpperCase()==='SOXL'));
@@ -86,7 +97,10 @@ function timelineMessages(day){
       messages.push({id:'plan-orders',date,text:'주문표 생성\n'+groupedOrderLines(orders,'예정').join('\n')});
     }
     if(stage==='execution'&&orders.length){
-      messages.push({id:'execution-orders',date,text:'주문 제출\n'+groupedOrderLines(orders,o=>statusLabel(o.status)||'제출').join('\n')});
+      const soxl=batches.every(b=>b.investment==='SOXL');
+      messages.push({id:'execution-orders',date,
+        ...(soxl?{allOrdersCancelled:orders.every(o=>['SKIPPED','CANCELED','CANCELLED'].includes(String(o.status).toUpperCase()))}:{}),
+        text:'주문 제출\n'+groupedOrderLines(orders,o=>submissionLabel(o,soxl?'SOXL':'HYXL')).join('\n')});
     }
     if(stage==='settled'){
       const fills=batches.flatMap(b=>dailyFills(b).map(f=>({fill:f,batch:b})));

@@ -136,6 +136,7 @@ import Testing
   ("- 매수 SOXL 10주 @ $100 / $1,000 LOC · 제출 완료", "완료"),
   ("- 매수 SOXL 10주 @ $100 / $1,000 LOC · 거부", "확인 필요"),
   ("- 매수 SOXL 10주 @ $100 / $1,000 LOC · 예정", "확인 대기"),
+  ("- 매수 SOXL 10주 @ $100 / $1,000 미제출", "미제출"),
 ])
 func submissionHeaderDoesNotTreatRejectedOrPendingOrdersAsComplete(body: String, expected: String) {
   let message = ThreadMessage(id: "execution", text: "주문 제출\n" + body, date: "")
@@ -187,6 +188,15 @@ func submissionHeaderDoesNotTreatRejectedOrPendingOrdersAsComplete(body: String,
   #expect(activities[0].submissionStatus == nil)
   #expect(activities[0].orders[0].price == "$166.26")
   #expect(activities[1].submissionStatus == "취소")
+
+  let registered = ThreadMessage(id: "registered", text:
+    "주문 제출\n- 매도 SOXL 15주 @ $170 / $2,550 제출 완료", date: cancelled.date,
+    allOrdersCancelled: true)
+  let separateRegistration = OrderActivity.timeline([plan, registered])
+  #expect(separateRegistration.count == 2)
+  #expect(separateRegistration[0].message.activityTitle == "주문표")
+  #expect(separateRegistration[1].submissionStatus == "완료")
+  #expect(!separateRegistration[1].orders[0].isUnfilled)
 
   let matchingPlan = ThreadMessage(id: "same-plan", text:
     "주문표 생성\n- 매도 SOXL 15주 @ $170 / $2,550 LOC · 예정", date: plan.date)
