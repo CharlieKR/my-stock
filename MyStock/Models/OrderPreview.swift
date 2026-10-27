@@ -8,6 +8,10 @@ struct OrderPreview: Identifiable {
   let price: String
   let amount: String
   let type: String
+  var quantityPriceLabel: String {
+    let separator = ["시장가", "가격 미정"].contains(price) ? " · " : " × "
+    return "\(quantity)주\(separator)\(price)"
+  }
   var isUnfilled: Bool {
     ["미체결", "거부", "취소", "실패"].contains { type.contains($0) }
   }
@@ -100,7 +104,7 @@ extension ThreadMessage {
     guard title.contains("주문") || title.contains("체결"),
       let expression = try? NSRegularExpression(
         pattern:
-          #"^-\s*(매수|매도)\s+(?:(\S+)\s+)?([\d,]+)주\s*@\s*([$₩][\d,.]+)\s*/\s*([$₩][\d,.]+)(?:\s+(.+))?"#
+          #"^-\s*(매수|매도)\s+(?:(\S+)\s+)?([\d,]+)주\s*@\s*([$₩][\d,.]+|시장가|가격 미정)\s*/\s*([$₩][\d,.]+|금액 미정)(?:\s+(.+))?"#
       )
     else { return [] }
     var rows: [OrderPreview] = []
@@ -116,10 +120,15 @@ extension ThreadMessage {
         let range = match.range(at: index)
         return range.location == NSNotFound ? "" : source.substring(with: range)
       }
+      let rawPrice = text(4)
+      let numericPrice = Double(rawPrice.dropFirst().replacingOccurrences(of: ",", with: ""))
+      let unspecified = numericPrice.map { $0 <= 0 } ?? ["시장가", "가격 미정"].contains(rawPrice)
+      let market = text(6).contains("MOC") || text(6).contains("시장가") || text(6).contains("MARKET")
       rows.append(
         OrderPreview(
           id: rows.count, side: text(1), name: text(2).isEmpty ? "SOXL" : text(2),
-          quantity: text(3), price: text(4), amount: text(5), type: text(6)))
+          quantity: text(3), price: unspecified ? (market || rawPrice == "시장가" ? "시장가" : "가격 미정") : rawPrice,
+          amount: unspecified ? "금액 미정" : text(5), type: text(6)))
     }
     return rows
   }

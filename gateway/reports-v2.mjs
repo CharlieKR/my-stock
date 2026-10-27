@@ -33,12 +33,29 @@ function orderLine(order,currency,suffix=''){
   const symbol=({'0193T0':'KODEX','0194T0':'ACE'})[rawSymbol.replace(/\.KS$/u,'')]??rawSymbol;
   const qty=Number(order.qty??order.quantity??0);
   const price=order.limit_price??order.order_price??order.price;
-  if(price===null||price===undefined||!Number.isFinite(Number(price)))return `- ${side} ${symbol} ${number(qty)}주 · 가격 미정`;
-  const mark=currency==='KRW'?'₩':'$';
-  const amount=new Decimal(price).times(qty);
   const type=orderTypeLabel(orderType(order));
   const note=[type,suffix].filter(Boolean).join(' · ');
+  const market=['MARKET','MOC'].includes(String(orderType(order)).trim().toUpperCase());
+  // Zero is an unspecified order price, never a zero-dollar sale. A market
+  // order has no fixed value until filled; filled rows use broker evidence.
+  const priced=price!==null&&price!==undefined&&Number.isFinite(Number(price))&&Number(price)>0;
+  if(!priced||(market&&suffix!=='체결 완료')){
+    return `- ${side} ${symbol} ${number(qty)}주 @ ${market?'시장가':'가격 미정'} / 금액 미정${note?` ${note}`:''}`;
+  }
+  const mark=currency==='KRW'?'₩':'$';
+  const amount=new Decimal(price).times(qty);
   return `- ${side} ${symbol} ${number(qty)}주 @ ${mark}${number(price)} / ${mark}${number(amount)}${note?` ${note}`:''}`;
+}
+function withPlannedMarketType(order,batch,day){
+  if(batch.investment!=='SOXL'||orderType(order)||Number(order.order_price??order.price)>0)return order;
+  // LST execution rows may omit the order method. Use a plan only when every
+  // matching side/symbol/quantity agrees on a market method; never infer LOC.
+  const side=value=>({'매수':'BUY','매도':'SELL'})[value]??String(value).toUpperCase();
+  const matches=day.filter(b=>b.stage==='plan'&&b.portfolioId===batch.portfolioId)
+    .flatMap(dailyOrders).filter(p=>String(p.symbol).toUpperCase()===String(order.symbol).toUpperCase()&&
+      side(p.side)===side(order.side)&&Number(p.qty??p.quantity)===Number(order.qty??order.quantity));
+  const types=[...new Set(matches.map(p=>String(orderType(p)).trim().toUpperCase()))];
+  return types.length===1&&['MARKET','MOC'].includes(types[0])?{...order,order_type:types[0]}:order;
 }
 const statusLabel=status=>{
   const value=String(status??'').toUpperCase();
@@ -92,7 +109,7 @@ function timelineMessages(day){
     const date=batches.map(b=>b.activityAt??(stage==='execution'
       ? dailyOrders(b).map(o=>o.submitted_at??o.created_at).filter(Boolean).sort().at(-1)??b.capturedAt
       : b.capturedAt)).sort().at(-1);
-    const orders=batches.flatMap(b=>dailyOrders(b).map(o=>({...o,currency:b.currency,portfolioId:b.portfolioId})));
+    const orders=batches.flatMap(b=>dailyOrders(b).map(o=>({...withPlannedMarketType(o,b,day),currency:b.currency,portfolioId:b.portfolioId})));
     if(stage==='plan'&&orders.length){
       messages.push({id:'plan-orders',date,text:'주문표 생성\n'+groupedOrderLines(orders,'예정').join('\n')});
     }

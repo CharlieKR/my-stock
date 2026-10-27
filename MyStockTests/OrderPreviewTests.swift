@@ -2,6 +2,32 @@ import Testing
 
 @testable import MyStockCore
 
+@Test func marketOrdersKeepQuantityAndPendingAmountAcrossPlansSubmissionsAndFills() {
+  let plan = ThreadMessage(id:"plan",text:
+    "주문표 생성\n- 매도 SOXL 146주 @ 시장가 / 금액 미정 시장가(MOC) · 예정",date:"")
+  let submission = ThreadMessage(id:"execution",text:
+    "주문 제출\n- 매도 SOXL 146주 @ 시장가 / 금액 미정 시장가(MOC) · 제출 완료",date:"")
+  #expect(plan.orderPreviews.count == 1)
+  #expect(plan.orderPreviews.first?.quantity == "146")
+  #expect(plan.orderPreviews.first?.quantityPriceLabel == "146주 · 시장가")
+  #expect(plan.orderPreviews.first?.amount == "금액 미정")
+  #expect(OrderActivity.timeline([submission]).first?.submissionStatus == "완료")
+  let result = ThreadMessage(id:"result",text:
+    "체결 결과\n- 매도 SOXL 146주 @ $87.5 / $12,775 시장가(MOC) · 체결 완료",date:"")
+  #expect(result.orderPreviews.first?.price == "$87.5")
+  #expect(result.orderPreviews.first?.amount == "$12,775")
+  #expect(result.orderPreviews.first?.quantityPriceLabel == "146주 × $87.5")
+  #expect(result.orderPreviews.first?.isUnfilled == false)
+}
+
+@Test func cachedZeroPricesAndUnknownLimitsNeverShowZeroDollarOrders() {
+  let message = ThreadMessage(id:"cached",text:
+    "주문표 생성\n- 매도 SOXL 146주 @ $0 / $0 시장가(MOC) · 예정\n- 매수 SOXL 24주 @ $0 / $0 LOC · 예정\n- 매수 SOXL 2주 @ 가격 미정 / 금액 미정 제출 대기\n- 매도 SOXL 3주 @ 시장가 / 금액 미정 시장가(MOC) · 미체결",date:"")
+  #expect(message.orderPreviews.map(\.price) == ["시장가", "가격 미정", "가격 미정", "시장가"])
+  #expect(message.orderPreviews.allSatisfy { $0.amount == "금액 미정" })
+  #expect(message.orderPreviews.last?.isUnfilled == true)
+}
+
 @Test func parsesWonOrdersAndKeepsQuantities() {
   let message = ThreadMessage(
     id: "1",

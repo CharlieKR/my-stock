@@ -453,7 +453,7 @@ struct ThreadSection: View {
                 VStack(alignment: .leading, spacing: 5) {
                   Text(order.name).font(.subheadline.weight(.semibold))
                     .strikethrough(order.isUnfilled, color: .red)
-                  Text("\(order.quantity)주 × \(order.price)").font(.caption)
+                  Text(order.quantityPriceLabel).font(.caption)
                     .foregroundStyle(.secondary).strikethrough(order.isUnfilled, color: .red)
                   if !order.type.isEmpty {
                     Text(order.type).font(.caption2).foregroundStyle(

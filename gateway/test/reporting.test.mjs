@@ -172,6 +172,39 @@ test('future or incomplete source is not a combined valuation',()=>{
   assert.equal(calculatePerformance(rows,[{date:'2026-03-31',usdKrw:1000}],'all',new Date('2026-03-31T12:00:00Z')).points.length,0);
 });
 const batch=(extra={})=>({schemaVersion:2,investment:'HYXL',portfolioId:'kiwoom_main',date:'2026-09-18',stage:'settled',capturedAt:'2026-09-18T08:00:00Z',currency:'KRW',nav:'100',stockValue:'80',cash:'20',principal:'90',cumulativePnl:'10',dailyPnl:'1',quality:'broker_reconciled',cashEvents:[],details:[],...extra});
+test('146-share MOC plan and registration have unknown value; settlement uses actual broker fills',()=>{
+  const common={investment:'SOXL',portfolioId:'soxl_live',currency:'USD'};
+  const plan=batch({...common,stage:'plan',orders:[{symbol:'SOXL',side:'매도',qty:146,price:0,orderType:'MOC'}]});
+  const order={id:'moc',symbol:'SOXL',side:'sell',qty:146,order_price:0,kis_order_no:'123',status:'SUBMITTED'};
+  const execution=batch({...common,stage:'execution',orders:[order]});
+  const settled=batch({...common,orders:[order],evidence:{fills:[['moc',{matchedQty:146,matchedAmount:12775,
+    executions:[{qty:146,amount:12775,orderType:'MOC'}]}]]}});
+  const report=normalizeBatches([plan,execution,settled],'SOXL')[0];
+  assert.match(report.messages.find(m=>m.id==='plan-orders').text,/146주 @ 시장가 \/ 금액 미정 시장가\(MOC\) · 예정/);
+  assert.match(report.messages.find(m=>m.id==='execution-orders').text,/146주 @ 시장가 \/ 금액 미정 시장가\(MOC\) · 제출 완료/);
+  assert.match(report.messages.find(m=>m.id==='settled-fills').text,/146주 @ \$87.5 \/ \$12,775 시장가\(MOC\) · 체결 완료/);
+  assert.doesNotMatch(report.messages.map(m=>m.text).join('\n'),/\$0|미체결/);
+  assert.equal(plan.orders[0].qty,146);assert.equal(order.order_price,0);
+  const unfilled=normalizeBatches([plan,{...settled,evidence:{fills:[]}}],'SOXL')[0].messages.find(m=>m.id==='settled-fills');
+  assert.match(unfilled.text,/146주 @ 시장가 \/ 금액 미정 시장가\(MOC\) · 미체결/);
+});
+test('market reference prices stay unspecified before fills; missing limit prices are not guessed as market orders',()=>{
+  const common={investment:'SOXL',portfolioId:'soxl_live',currency:'USD'};
+  const orders=[{symbol:'SOXL',side:'SELL',qty:146,price:90,orderType:'MOC'},
+    {symbol:'SOXL',side:'BUY',qty:24,price:86.25,orderType:'LOC'},
+    {symbol:'SOXL',side:'SELL',qty:3,price:0,orderType:'LOC'},
+    {symbol:'SOXL',side:'SELL',qty:4,price:null,orderType:'MARKET'}];
+  const plan=batch({...common,stage:'plan',orders});
+  const text=normalizeBatches([plan],'SOXL')[0].messages[0].text;
+  assert.match(text,/146주 @ 시장가 \/ 금액 미정 시장가\(MOC\)/);
+  assert.match(text,/24주 @ \$86.25 \/ \$2,070 LOC/);
+  assert.match(text,/3주 @ 가격 미정 \/ 금액 미정 LOC/);
+  assert.match(text,/4주 @ 시장가 \/ 금액 미정 시장가/);
+  const execution=batch({...common,stage:'execution',orders:[{symbol:'SOXL',side:'sell',qty:146,order_price:0,status:'SUBMITTED'}]});
+  const ambiguous={...plan,orders:[orders[0],{...orders[0],orderType:'LOC'}]};
+  const submitted=normalizeBatches([ambiguous,execution],'SOXL')[0].messages.find(m=>m.id==='execution-orders');
+  assert.match(submitted.text,/146주 @ 가격 미정 \/ 금액 미정 제출 완료/);
+});
 test('missing one HYXL account cannot silently shrink total assets',()=>{
   assert.equal(normalizeBatches([batch()],'HYXL')[0].totalAssets,null);
   const complete=normalizeBatches([batch(),batch({portfolioId:'ls_main',nav:'200'})],'HYXL')[0];
