@@ -8,6 +8,24 @@ import { normalizeBatches, mergeDailyReport, closingQuotes, isEmptyOrderPlan } f
 
 const report=(date,nav,extra={})=>({id:'SOXL-'+date,investment:'SOXL',date,currency:'USD',status:'settled',totalAssets:String(nav),quality:'broker_reconciled',cashEvents:[],cashflowCoverageFrom:'2026-01-01',...extra});
 const when=new Date('2026-04-01T12:00:00Z');
+test('HYXL shows the CMA check on the planned LS buy and explains a deposit rejection',()=>{
+  const date='2026-11-26';
+  const buy={id:11,symbol:'0193T0.KS',side:'BUY',qty:10,limit_price:3135,status:'ready'};
+  const sell={...buy,id:12,side:'SELL',limit_price:5000};
+  const base={investment:'HYXL',portfolioId:'ls_main',date,currency:'KRW',capturedAt:date+'T01:01:00Z'};
+  const checkText='10:01 CMA 출금가능 17,062,189원 (참고) · 3,000만원 기준 부족 예상 12,937,811원';
+  const plan={...base,stage:'plan',activityAt:'2026-11-25T07:30:00Z',orders:[buy,sell],
+    details:[{id:'ls-cma-buy-check',text:checkText}]};
+  const rejected={...base,stage:'execution',orders:[{...buy,status:'REJECTED',
+    last_error:'LS API error [CSPAT00601]: [03662] 기본예탁금이상을 예탁해야 합니다.'}],details:[]};
+  const [report]=normalizeBatches([plan,rejected],'HYXL');
+  const orderSheet=report.messages.find(m=>m.id==='plan-orders');
+  assert.equal(orderSheet.date,plan.activityAt);
+  const lines=orderSheet.text.split('\n');
+  assert.ok(lines.find(line=>line.startsWith('- 매수')).includes(checkText));
+  assert.ok(!lines.find(line=>line.startsWith('- 매도')).includes(checkText));
+  assert.match(report.messages.find(m=>m.id==='execution-orders').text,/LS 단일종목 레버리지 기본예탁금 부족/);
+});
 test('corrected settlements choose numeric revision 11 over 9 at the same observation time',async()=>{
   const db=new PGlite();
   try {

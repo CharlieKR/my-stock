@@ -66,7 +66,7 @@ const statusLabel=status=>{
   return status??'';
 };
 function submissionLabel(order,investment){
-  if(investment!=='SOXL')return statusLabel(order.status)||'제출';
+  if(investment!=='SOXL')return lsBasicDepositRejection(order)??(statusLabel(order.status)||'제출');
   // Registration is a historical event. A later fill/cancellation cannot undo
   // the broker's acceptance; its outcome belongs in the result card.
   const status=String(order.status??'').toUpperCase();
@@ -75,6 +75,11 @@ function submissionLabel(order,investment){
   if(['REJECTED','FAILED'].includes(status))return '거부';
   if(['SKIPPED','CANCELED','CANCELLED'].includes(status))return '미제출';
   return '제출 대기';
+}
+function lsBasicDepositRejection(order){
+  return order.portfolioId==='ls_main'&&String(order.side).toUpperCase()==='BUY'&&
+    String(order.status).toUpperCase()==='REJECTED'&&/\[03662\]/u.test(String(order.last_error??''))
+    ?'거부 · LS 단일종목 레버리지 기본예탁금 부족 (3,000만원 기준)':null;
 }
 function dailyOrders(batch){
   return (batch.orders??[]).filter(o=>(!o.us_date||o.us_date===batch.date)&&
@@ -111,7 +116,12 @@ function timelineMessages(day){
       : b.capturedAt)).sort().at(-1);
     const orders=batches.flatMap(b=>dailyOrders(b).map(o=>({...withPlannedMarketType(o,b,day),currency:b.currency,portfolioId:b.portfolioId})));
     if(stage==='plan'&&orders.length){
-      messages.push({id:'plan-orders',date,text:'주문표 생성\n'+groupedOrderLines(orders,'예정').join('\n')});
+      const cmaCheck=batches.find(b=>b.investment==='HYXL'&&b.portfolioId==='ls_main')
+        ?.details?.find(d=>d.id==='ls-cma-buy-check')?.text;
+      const planLabel=order=>cmaCheck&&order.portfolioId==='ls_main'&&String(order.symbol).replace(/\.KS$/u,'')==='0193T0'&&
+        String(order.side).toUpperCase()==='BUY'&&String(order.status).toUpperCase()==='READY'
+        ?'예정 · '+cmaCheck:'예정';
+      messages.push({id:'plan-orders',date,text:'주문표 생성\n'+groupedOrderLines(orders,planLabel).join('\n')});
     }
     if(stage==='execution'&&orders.length){
       const soxl=batches.every(b=>b.investment==='SOXL');
@@ -153,8 +163,8 @@ function timelineMessages(day){
       const sections=[fillLines.length?fillLines.join('\n'):'체결 없음'];
       if(unfilled.length)sections.push('미체결/거부\n'+groupedOrderLines(unfilled,o=>{
         const status=String(o.status??'').toUpperCase();
-        return ['REJECTED','FAILED'].includes(status)?'거부':
-          ['CANCELED','CANCELLED'].includes(status)?'취소':'미체결';
+        return lsBasicDepositRejection(o)??(['REJECTED','FAILED'].includes(status)?'거부':
+          ['CANCELED','CANCELLED'].includes(status)?'취소':'미체결');
       }).join('\n'));
       messages.push({id:'settled-fills',date,text:'체결 결과\n'+sections.join('\n\n')});
     }
