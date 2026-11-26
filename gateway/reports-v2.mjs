@@ -78,7 +78,7 @@ function submissionLabel(order,investment){
 }
 function lsBasicDepositRejection(order){
   return order.portfolioId==='ls_main'&&String(order.side).toUpperCase()==='BUY'&&
-    String(order.status).toUpperCase()==='REJECTED'&&/\[03662\]/u.test(String(order.last_error??''))
+    String(order.status).toUpperCase()==='REJECTED'&&order.rejection_code==='03662'
     ?'거부 · LS 단일종목 레버리지 기본예탁금 부족 (3,000만원 기준)':null;
 }
 function dailyOrders(batch){

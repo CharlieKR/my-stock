@@ -17,7 +17,7 @@ test('HYXL shows the CMA check on the planned LS buy and explains a deposit reje
   const plan={...base,stage:'plan',activityAt:'2026-11-25T07:30:00Z',orders:[buy,sell],
     details:[{id:'ls-cma-buy-check',text:checkText}]};
   const rejected={...base,stage:'execution',orders:[{...buy,status:'REJECTED',
-    last_error:'LS API error [CSPAT00601]: [03662] 기본예탁금이상을 예탁해야 합니다.'}],details:[]};
+    rejection_code:'03662'}],details:[]};
   const [report]=normalizeBatches([plan,rejected],'HYXL');
   const orderSheet=report.messages.find(m=>m.id==='plan-orders');
   assert.equal(orderSheet.date,plan.activityAt);
