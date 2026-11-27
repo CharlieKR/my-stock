@@ -8,23 +8,31 @@ import { normalizeBatches, mergeDailyReport, closingQuotes, isEmptyOrderPlan } f
 
 const report=(date,nav,extra={})=>({id:'SOXL-'+date,investment:'SOXL',date,currency:'USD',status:'settled',totalAssets:String(nav),quality:'broker_reconciled',cashEvents:[],cashflowCoverageFrom:'2026-01-01',...extra});
 const when=new Date('2026-04-01T12:00:00Z');
-test('HYXL shows the CMA check on the planned LS buy and explains a deposit rejection',()=>{
+test('HYXL displays only the relevant CMA issue on the planned LS buy',()=>{
   const date='2026-11-26';
   const buy={id:11,symbol:'0193T0.KS',side:'BUY',qty:10,limit_price:3135,status:'ready'};
   const sell={...buy,id:12,side:'SELL',limit_price:5000};
   const base={investment:'HYXL',portfolioId:'ls_main',date,currency:'KRW',capturedAt:date+'T01:01:00Z'};
-  const checkText='10:01 CMA 출금가능 17,062,189원 (참고) · 3,000만원 기준 부족 예상 12,937,811원';
-  const plan={...base,stage:'plan',activityAt:'2026-11-25T07:30:00Z',orders:[buy,sell],
-    details:[{id:'ls-cma-buy-check',text:checkText}]};
+  const plan={...base,stage:'plan',activityAt:'2026-11-25T07:30:00Z',orders:[buy,sell]};
+  const healthy='12:46 CMA 출금가능 43,001,337원 (참고) · 3,000만원 대비 13,001,337원 여유 · 미결제 매도대금 0원 (결제 후 인정) · 인정액은 LS 앱에서 확인';
+  const cases=[
+    [healthy,'예정'],
+    [healthy+' · 예탁금 여유 확보 시 예상 전송 3,680주 (지정가 전량 체결 후 약 30,101,002원)','3,680주로 조정 예상'],
+    ['10:01 CMA 출금가능 17,062,189원 (참고) · 3,000만원 기준 부족 예상 12,937,811원','예탁금 부족 예상 12,937,811원'],
+    ['10:01 CMA 조회 · 출금가능금액 확인 불가 · LS 앱에서 기본예탁금 확인','예탁금 확인 필요'],
+  ];
+  for(const [text,expected] of cases){
+    const [report]=normalizeBatches([{...plan,details:[{id:'ls-cma-buy-check',text}]}],'HYXL');
+    const orderSheet=report.messages.find(m=>m.id==='plan-orders');
+    assert.equal(orderSheet.date,plan.activityAt);
+    assert.deepEqual(orderSheet.text.split('\n'),[
+      '주문표 생성',`- 매수 KODEX 10주 @ ₩3,135 / ₩31,350 ${expected}`,'- 매도 KODEX 10주 @ ₩5,000 / ₩50,000 예정'
+    ]);
+  }
   const rejected={...base,stage:'execution',orders:[{...buy,status:'REJECTED',
     rejection_code:'03662'}],details:[]};
-  const [report]=normalizeBatches([plan,rejected],'HYXL');
-  const orderSheet=report.messages.find(m=>m.id==='plan-orders');
-  assert.equal(orderSheet.date,plan.activityAt);
-  const lines=orderSheet.text.split('\n');
-  assert.ok(lines.find(line=>line.startsWith('- 매수')).includes(checkText));
-  assert.ok(!lines.find(line=>line.startsWith('- 매도')).includes(checkText));
-  assert.match(report.messages.find(m=>m.id==='execution-orders').text,/LS 단일종목 레버리지 기본예탁금 부족/);
+  const [report]=normalizeBatches([rejected],'HYXL');
+  assert.match(report.messages.find(m=>m.id==='execution-orders').text,/거부 · 기본예탁금 부족$/u);
 });
 test('corrected settlements choose numeric revision 11 over 9 at the same observation time',async()=>{
   const db=new PGlite();

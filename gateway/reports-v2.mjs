@@ -79,7 +79,16 @@ function submissionLabel(order,investment){
 function lsBasicDepositRejection(order){
   return order.portfolioId==='ls_main'&&String(order.side).toUpperCase()==='BUY'&&
     String(order.status).toUpperCase()==='REJECTED'&&order.rejection_code==='03662'
-    ?'거부 · LS 단일종목 레버리지 기본예탁금 부족 (3,000만원 기준)':null;
+    ?'거부 · 기본예탁금 부족':null;
+}
+function cmaPlanIssue(text){
+  if(typeof text!=='string')return null;
+  const shortage=text.match(/기준 부족 예상 ([\d,]+)원/u)?.[1];
+  if(shortage)return `예탁금 부족 예상 ${shortage}원`;
+  const adjustedQty=text.match(/예상 전송 ([\d,]+)주/u)?.[1];
+  if(adjustedQty)return `${adjustedQty}주로 조정 예상`;
+  if(text.includes('출금가능금액 확인 불가'))return '예탁금 확인 필요';
+  return null;
 }
 function dailyOrders(batch){
   return (batch.orders??[]).filter(o=>(!o.us_date||o.us_date===batch.date)&&
@@ -116,11 +125,11 @@ function timelineMessages(day){
       : b.capturedAt)).sort().at(-1);
     const orders=batches.flatMap(b=>dailyOrders(b).map(o=>({...withPlannedMarketType(o,b,day),currency:b.currency,portfolioId:b.portfolioId})));
     if(stage==='plan'&&orders.length){
-      const cmaCheck=batches.find(b=>b.investment==='HYXL'&&b.portfolioId==='ls_main')
-        ?.details?.find(d=>d.id==='ls-cma-buy-check')?.text;
-      const planLabel=order=>cmaCheck&&order.portfolioId==='ls_main'&&String(order.symbol).replace(/\.KS$/u,'')==='0193T0'&&
+      const cmaIssue=cmaPlanIssue(batches.find(b=>b.investment==='HYXL'&&b.portfolioId==='ls_main')
+        ?.details?.find(d=>d.id==='ls-cma-buy-check')?.text);
+      const planLabel=order=>cmaIssue&&order.portfolioId==='ls_main'&&String(order.symbol).replace(/\.KS$/u,'')==='0193T0'&&
         String(order.side).toUpperCase()==='BUY'&&String(order.status).toUpperCase()==='READY'
-        ?'예정 · '+cmaCheck:'예정';
+        ?cmaIssue:'예정';
       messages.push({id:'plan-orders',date,text:'주문표 생성\n'+groupedOrderLines(orders,planLabel).join('\n')});
     }
     if(stage==='execution'&&orders.length){
